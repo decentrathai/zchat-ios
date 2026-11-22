@@ -1,0 +1,11 @@
+*.xcodeproj/
+DerivedData/
+.build/
+__pycache__/
+*.pyc
+.DS_Store
+*.p8
+*.p12
+*.mobileprovision
+*.cer
+fastlane/.env*

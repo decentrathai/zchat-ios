@@ -1,0 +1,33 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Edit|Write|MultiEdit|Read|Grep",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /home/yourt/zchat-android/tools/qa/hooks/guard_entry.py",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "python3 /home/yourt/zchat-ios/tools/qa/hooks/guard_entry.py",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash|Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /home/yourt/zchat-android/tools/qa/hooks/output_scan.py",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}
