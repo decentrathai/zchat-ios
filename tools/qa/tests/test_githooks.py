@@ -135,6 +135,12 @@ class CommitMsg(HookRepo):
         self.put(".claude/settings.json", "{}\n")
         self.blocked("chore(harness): settings", says="[harness-change:")
 
+    def test_tag_named_in_prose_before_the_real_one(self):
+        sha = self.red()
+        self.put("tools/qa/y.py", "x = 1\n")
+        self.ok("feat(harness): y [red:%s]\n\nThe rule wants [harness-change:] and [test-change-ok:].\n\n"
+                "[harness-change: the real reason]" % sha)
+
     def test_removed_assertion_needs_tag(self):
         self.put("tools/qa/tests/test_w.py", "def test_w():\n    assert 1 == 1\n    assert 2 == 2\n")
         self.ok("test(harness): w")
