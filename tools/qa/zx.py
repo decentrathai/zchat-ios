@@ -29,7 +29,7 @@ PROJECT = HOME + "/zchat-ios"
 GUARDS = [HOME + "/zchat-android/tools/qa/hooks/guard_entry.py",   # the Android guard: always, first
           PROJECT + "/tools/qa/hooks/guard_entry.py"]               # the iOS guard, once it exists
 SCAN = HOME + "/zchat-android/tools/qa/hooks/output_scan.py"
-REQUIRED = {GUARDS[0], SCAN}
+REQUIRED = {GUARDS[0], GUARDS[1], SCAN}                             # the iOS guard exists since 800b911
 MAX_OUT = 60000
 
 

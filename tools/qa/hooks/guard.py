@@ -238,6 +238,10 @@ def check_gh(args):
             elif a in ("-f", "-F", "--field", "--raw-field", "--input") and method == "GET":
                 method = "POST"
         path = " ".join(r for r in rest if not r.startswith("-"))
+        if rest[:1] == ["graphql"] or "graphql" in path.split():
+            if re.search(r"\bmutation\b", " ".join(rest)):
+                return "a GitHub GraphQL mutation can change a control, a repo or billing (A14)"
+            return None
         if method != "GET" and GH_CONTROL.search(path):
             return "gh api %s on %s changes a GitHub control or billing (A14)" % (method, path[:80])
         if method != "GET" and re.search(r"(/releases|/actions/workflows/.*/dispatches|/actions/runs/.*/rerun)",
@@ -259,7 +263,38 @@ PUBLISH = [
 ]
 
 
-def check_bash(cmd, cwd):
+SHELLS = {"bash", "sh", "zsh", "dash", "ksh", "su"}
+FLOCK_VALUED = {"-w", "--wait", "--timeout", "-E", "--conflict-exit-code"}
+
+
+def _unwrap(args):
+    """Strip `flock [opts] <lockfile>` prefixes. Returns (args, nested_command_or_None)."""
+    while args and os.path.basename(args[0]) == "flock":
+        i = 1
+        while i < len(args) and args[i].startswith("-") and args[i] not in ("-c", "--command"):
+            i += 2 if args[i] in FLOCK_VALUED else 1
+        i += 1                                                   # the lock file or directory
+        if i < len(args) and args[i] in ("-c", "--command"):
+            return [], args[i + 1] if i + 1 < len(args) else ""
+        args = _strip_env(args[i:])
+    return args, None
+
+
+def _nested(args):
+    """The command string of `bash -c '…'`, `sh -lc '…'`, `su -c '…'`, `eval …`, or None."""
+    prog = os.path.basename(args[0])
+    if prog == "eval":
+        return " ".join(args[1:])
+    if prog in SHELLS:
+        for i, a in enumerate(args[1:], 1):
+            if re.match(r"^-[a-zA-Z]*c[a-zA-Z]*$", a) and i + 1 < len(args):
+                return args[i + 1]
+    return None
+
+
+def check_bash(cmd, cwd, depth=0, env_repo=None):
+    if depth > 4:
+        return "commands nested more than four shells deep are refused (fail-closed)"
     for rx, why in PUBLISH:
         if rx.search(cmd):
             return why
@@ -269,7 +304,28 @@ def check_bash(cmd, cwd):
     here = cwd or HOME
     for seg in segs:
         redirs, args = _redirect_targets(seg)
+        for a in (args[1:] if args[:1] == ["export"] else args):
+            m = re.match(r"^(GIT_DIR|GIT_WORK_TREE)=(.*)$", a)
+            if m:
+                env_repo = _norm(m.group(2), here)
+            elif not re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", a):
+                break
+        if args[:1] == ["export"]:
+            continue
         args = _strip_env(args)
+        args, inner = _unwrap(args)
+        if inner is not None:
+            why = check_bash(inner, here, depth + 1, env_repo)
+            if why:
+                return why
+            args = []
+        if args:
+            inner = _nested(args)
+            if inner is not None:
+                why = check_bash(inner, here, depth + 1, env_repo)
+                if why:
+                    return why
+                continue
         for r in redirs:
             p = _norm(r, here)
             if p.startswith("/dev/"):
@@ -284,8 +340,9 @@ def check_bash(cmd, cwd):
         if not args:
             continue
         prog = os.path.basename(args[0])
-        if prog == "cd":
-            here = _norm(args[1], here) if len(args) > 1 else HOME
+        if prog in ("cd", "pushd"):
+            dest = [a for a in args[1:] if not a.startswith("-") and not a.startswith("+")]
+            here = _norm(dest[0], here) if dest else HOME
             continue
         for a in args[1:]:
             if SIGNING.search(a.strip("'\"")) and prog not in ("ls", "find", "git"):
@@ -296,6 +353,8 @@ def check_bash(cmd, cwd):
         if _under(here, THIRDPARTY) and (prog in RUNNERS or args[0].startswith("./")):
             return "no build, test or script run inside thirdparty (plan C.5)"
         if prog == "git":
+            if env_repo and foreign(env_repo):
+                args = [args[0], "-C", env_repo] + args[1:]
             why = check_git(args, here, cmd)
             if why:
                 return why
@@ -305,16 +364,24 @@ def check_bash(cmd, cwd):
             if why:
                 return why
             continue
-        if prog == "flock":
-            continue
         targets = []
+        tdir = [args[i + 1] for i, a in enumerate(args[:-1]) if a == "-t"] + \
+               [a.split("=", 1)[1] for a in args if a.startswith("--target-directory=")]
         if prog in WRITE_ANY:
             targets = _paths(args[1:])
         elif prog == "mv":
-            targets = _paths(args[1:])
+            targets = _paths(args[1:]) + tdir
         elif prog in WRITE_DEST:
             ps = _paths(args[1:])
-            targets = ps[-1:]
+            targets = (ps[-1:] if not tdir else []) + tdir
+        elif prog == "find" and any(a in ("-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprintf",
+                                          "-fls") for a in args):
+            roots = []
+            for a in args[1:]:
+                if a.startswith("-") or a in ("(", "!", ")"):
+                    break
+                roots.append(a)
+            targets = roots or ["."]
         elif prog in ("sed", "perl") and any(a == "-i" or a.startswith("-i") or a.startswith("--in-place")
                                              for a in args[1:]):
             targets = _paths(args[1:])[1:] if prog == "sed" else _paths(args[1:])
