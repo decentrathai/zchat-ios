@@ -73,6 +73,32 @@ class ZX(unittest.TestCase):
             self.assertEqual(rc, 4, s)
             self.assertNotIn("visible", out)
 
+    def test_scan_exit2_withholds(self):
+        rc, out = self.run_bash([ALLOW], EXIT2)
+        self.assertEqual(rc, 4)
+        self.assertNotIn("visible", out)
+
+    def test_odd_guard_answers_fail_closed(self):
+        odd = [_script("import sys; sys.stdin.read(); print('null')\n"),
+               _script('import sys; sys.stdin.read(); print(\'{"continue": false}\')\n'),
+               _script('import sys, json; sys.stdin.read(); print(json.dumps({"hookSpecificOutput": '
+                       '{"permissionDecision": "block"}}))\n')]
+        for g in odd:
+            rc, _ = self.run_bash([g], ALLOW)
+            self.assertEqual(rc, 3, g)
+
+    def test_paths_resolved_once_from_cwd(self):
+        zx.GUARDS, zx.SCAN, zx.REQUIRED = [ALLOW], ALLOW, set()
+        d = tempfile.mkdtemp()
+        old = os.getcwd()
+        os.chdir(d)
+        try:
+            self.assertEqual(zx._abs("x.txt"), os.path.join(os.path.realpath(d), "x.txt"))
+            os.symlink("/etc", os.path.join(d, "link"))
+            self.assertEqual(zx._abs("link/hosts"), "/etc/hosts")
+        finally:
+            os.chdir(old)
+
     def test_write_checked_with_full_content(self):
         zx.GUARDS, zx.SCAN, zx.REQUIRED = [DENY], ALLOW, set()
         src = _script("content")

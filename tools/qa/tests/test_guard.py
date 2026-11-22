@@ -229,6 +229,101 @@ class Bypasses(unittest.TestCase):
         self.assertEqual(bash("gh api graphql -f query='query { viewer { login } }'"), "allow")
 
 
+class ReviewBypasses(unittest.TestCase):
+    """Fable review of b943758 (2026-11-22): every allowed payload it found must now deny."""
+
+    def assertDeny(self, cmds, cwd=IOS):
+        for c in cmds:
+            self.assertEqual(bash(c, cwd), "deny", repr(c))
+
+    def assertAllow(self, cmds, cwd=IOS):
+        for c in cmds:
+            self.assertEqual(bash(c, cwd), "allow", repr(c))
+
+    def test_newlines_and_heredocs(self):
+        self.assertDeny(["echo start\nrm -rf /home/yourt/zchat-android/app/build",
+                         "cd ~/zchat-android\ngit commit -am x", "echo go\ngh secret set X --body y",
+                         "echo go\ngit push https://github.com/x/y.git dev",
+                         "bash <<'EOF'\nrm -rf ~/zchat-android/x\nEOF",
+                         "python3 - <<'EOF'\nimport shutil; shutil.rmtree('/home/yourt/zchat-android/x')\nEOF",
+                         "echo a \\\n && rm -rf ~/zchat-android/x"])
+        self.assertAllow(["cat > /home/yourt/zchat-evidence/ios/n.md <<'EOF'\nIt's done\nEOF",
+                          "echo a\necho b > /home/yourt/zchat-evidence/ios/b.txt"])
+
+    def test_fd_numbers_and_trailing_options(self):
+        self.assertDeny(["cp a.swift /home/yourt/zchat-android/ 2>/dev/null",
+                         "rsync -a src/ ~/zchat-android/ 2>&1 | tail",
+                         "rsync -a src/ ~/zchat-android/ --exclude .git",
+                         "cp f ~/zchat-spec/parity/PARITY.json 2>&1", "cmd >& ~/zchat-android/log",
+                         "cp --target-directory ~/zchat-android a"])
+
+    def test_shell_keywords(self):
+        self.assertDeny(["for d in app lib; do rm -rf ~/zchat-android/$d/build; done",
+                         "if [ -f x ]; then git -C ~/zchat-android stash; fi", "test -f k || { gh secret set X < k; }",
+                         "while true; do touch ~/zchat-android/x; done", "! rm ~/zchat-android/x"])
+
+    def test_in_place_flags(self):
+        self.assertDeny(["perl -pi -e 's/a/b/' /home/yourt/zchat-android/a.kt",
+                         "sed -Ei 's/a/b/' ~/zchat-spec/parity/PARITY.json", "sed -ni p ~/zchat-android/a",
+                         "sed 's/a/b/w /home/yourt/zchat-android/out' x"])
+
+    def test_publish_lanes(self):
+        self.assertDeny(["bundle exec fastlane beta", "fastlane ios release",
+                         "xcodebuild -exportArchive -archivePath a -exportOptionsPlist up.plist"])
+        self.assertAllow(["grep -n deliver fastlane/Fastfile", "git commit -m 'ci: document fastlane pilot lane'",
+                          "ls Sources/Transporter"])
+
+    def test_variables_globs_parents_substitutions(self):
+        self.assertDeny(["A=/home/yourt/zchat-android; echo x > $A/notes.md",
+                         "A=/home/yourt/zchat-android; cd $A && git commit -m x",
+                         "rm -rf ~/zchat-android*/build", "rm -rf /home/yourt/zchat-*/tmp", "rm -rf ~/.config",
+                         "X=\"$(cd ~/zchat-android && git stash)\"", "X=`rm -rf ~/zchat-android/x`",
+                         "echo x > //home/yourt/zchat-android/a", "echo x > ~yourt/zchat-android/a",
+                         "rm -rf /home/yourt", "mv ~/zchat-worktrees /tmp/x"])
+
+    def test_signing_reads(self):
+        self.assertDeny(["cd fastlane && cat .env", "base64 < AuthKey_ABC.p8", "cat < fastlane/.env",
+                         "find . -name '*.p8' -exec cat {} \\;", "git show HEAD:fastlane/.env", "git add -f dist.p12"])
+        self.assertEqual(decide("Grep", {"pattern": "KEY", "path": IOS + "/fastlane"})[0], "deny")
+        self.assertEqual(decide("Grep", {"pattern": "KEY", "glob": "*.p8"})[0], "deny")
+
+    def test_hook_bypass_and_push_targets(self):
+        self.assertDeny(["git commit -m x -n", "git commit -a -n -m x", "git commit -nm x",
+                         "git config --unset-all core.hooksPath",
+                         "git config remote.origin.pushurl https://github.com/x/y.git",
+                         "git config remote.origin.url git@github.com:x/y.git",
+                         "git push --repo=https://github.com/x/y.git", "git push github.com:x/y.git dev"])
+        self.assertAllow(["git push origin dev", "git config --get remote.origin.url"])
+
+    def test_github_controls(self):
+        self.assertDeny(["gh api -XPUT repos/o/r/environments/prod", "gh api repos/o/r/keys --field=key=x",
+                         "gh api repos/o/r/keys --input=f", "gh api repos/o/r/keys -fkey=x",
+                         "gh api -X PATCH repos/o/r/actions/variables/X -f value=y",
+                         "gh api -X PATCH repos/o/r -f private=false", "gh api -X PATCH repos/o/r -f visibility=public",
+                         "gh repo deploy-key add k.pub", "gh secret -R o/r set X"])
+        self.assertAllow(["gh api repos/o/r/actions/runs?per_page=5", "gh run list -L 5"])
+
+    def test_more_writers_and_git(self):
+        self.assertDeny(["curl -o ~/zchat-android/x https://example.com/a", "wget -O /home/yourt/zchat-android/x u",
+                         "wget -P ~/zchat-android u", "patch -d ~/zchat-android -p1 < p",
+                         "patch ~/zchat-android/a.kt < p", "tar xf a.tar --directory=~/zchat-android",
+                         "tar -xC ~/zchat-android -f a.tar", "cd ~/zchat-android && unzip a.zip",
+                         "git -C ~/zchat-android format-patch -1", "git -C ~/zchat-android bisect start",
+                         "git -C ~/zchat-android checkout-index -a", "git -C ~/zchat-android symbolic-ref HEAD x",
+                         "git --git-dir ~/zchat-android/.git commit -m x",
+                         "git clone --depth 1 https://x/y ~/zchat-android/x",
+                         "git worktree add -b br ~/zchat-android-wt/x", "git -C ~/zchat-android fetch"])
+
+    def test_reading_android_still_allowed(self):
+        self.assertAllow(["find ~/zchat-android -name '*.kt' -exec grep -l ZMSG {} +",
+                          "git -C ~/zchat-android branch --all", "git -C ~/zchat-android branch -a --contains abc123",
+                          "git -C ~/zchat-android tag -l", "(cd ~/zchat-android && git log -1); echo x > out.txt",
+                          "ln -s ~/zchat-android/AGENTS.md /home/yourt/zchat-evidence/ios/ref.md",
+                          "git -C ~/zchat-android log --format=%H -1 | head -c 9",
+                          "sha256sum ~/zchat-android/AGENTS.md", "diff ~/zchat-android/a ~/zchat-ios/b",
+                          "awk '{print $1}' ~/zchat-android/x", "wc -l ~/zchat-android/app/src/main/x.kt"])
+
+
 class FailClosed(unittest.TestCase):
     def test_garbage_payload_denied(self):
         r = subprocess.run([sys.executable, ENTRY], input="not json", capture_output=True, text=True, timeout=30)
