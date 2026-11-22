@@ -658,10 +658,11 @@ def _option_free(args):
 def check_file_tool(tool, ti, cwd):
     path = ti.get("file_path") or ti.get("notebook_path") or ti.get("path") or ""
     p = _norm(path, cwd) if path else ""
-    if tool in ("Read", "Grep"):
+    if tool in ("Read", "Grep", "Glob"):
         if p and (SIGNING.search(p) or SIGNING_DIR.search(p)):
             return "signing material is never read (A14)"
-        if tool == "Grep" and SIGNING.search(str(ti.get("glob", "")).replace("*", "x")):
+        pat = ti.get("glob", "") if tool == "Grep" else ti.get("pattern", "") if tool == "Glob" else ""
+        if pat and SIGNING.search(str(pat).replace("*", "x")):
             return "signing material is never searched (A14)"
         return None
     root = foreign(p)
@@ -687,7 +688,7 @@ def decide(payload):
     cwd = payload.get("cwd") or os.environ.get("CLAUDE_PROJECT_DIR") or HOME
     if tool == "Bash":
         return check_bash(str(ti.get("command", "")), cwd)
-    if tool in ("Read", "Grep", "Write", "Edit", "MultiEdit", "NotebookEdit"):
+    if tool in ("Read", "Grep", "Glob", "Write", "Edit", "MultiEdit", "NotebookEdit"):
         return check_file_tool(tool, ti, cwd)
     return None
 

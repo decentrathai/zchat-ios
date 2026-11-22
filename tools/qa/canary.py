@@ -21,11 +21,20 @@ MUST_DENY = [
                                   "new_string": "b"}),
     ("gh call that changes a secret", "Bash", {"command": "gh secret set ASC_KEY < k", "description": "c"}),
     ("hand-written pass file", "Write", {"file_path": P + "/release-pass.json", "content": "{}"}),
+    ("notebook edit into the Android tree", "NotebookEdit",
+     {"notebook_path": "/home/yourt/zchat-android/CANARY.ipynb", "new_source": "x"}),
+    ("search for an App Store key", "Glob", {"pattern": "**/AuthKey_*.p8"}),
 ]
 MUST_ALLOW = [
     ("read the brief", "Read", {"file_path": P + "/AGENTS.md"}),
     ("write evidence", "Write", {"file_path": "/home/yourt/zchat-evidence/ios/STATUS.md", "content": "x"}),
 ]
+
+
+def matches(matcher, tool):
+    """Claude Code matcher semantics: empty or "*" matches every tool, otherwise a full regex match."""
+    import re
+    return matcher in ("", "*") or re.fullmatch(matcher, tool) is not None
 
 
 def hooks(settings):
@@ -70,12 +79,11 @@ def main():
     ok = len(hs) >= 2
     if not ok:
         lines.append("FAIL: expected the Android and the iOS guard to be wired, found %d hooks" % len(hs))
-    import re
     for want, cases in (("deny", MUST_DENY), ("allow", MUST_ALLOW)):
         for name, tool, ti in cases:
             got, why = "allow", ""
             for matcher, cmd in hs:
-                if matcher and not re.fullmatch(matcher, tool):
+                if not matches(matcher, tool):
                     continue
                 d, w = decide(cmd, tool, ti)
                 if d != "allow":
