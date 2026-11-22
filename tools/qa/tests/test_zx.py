@@ -63,6 +63,10 @@ class ZX(unittest.TestCase):
         with redirect_stdout(io.StringIO()):
             self.assertEqual(zx.do_bash("echo x", "/tmp", 20), 3)
 
+    def test_ios_guard_is_required(self):
+        self.assertIn(zx.GUARDS[1], self.saved[2])
+        self.assertIn(zx.GUARDS[0], self.saved[2])
+
     def test_scan_block_or_skip_withholds_output(self):
         for s in (BLOCK, SKIP, CRASH, "/nonexistent/scan.py"):
             rc, out = self.run_bash([ALLOW], s)

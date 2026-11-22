@@ -191,6 +191,44 @@ class ServersLicencesThirdParty(unittest.TestCase):
         self.assertEqual(bash("git -C " + tp + " log -1"), "allow")
 
 
+class Bypasses(unittest.TestCase):
+    """Ways around the floor rules found in the first review (2026-11-22)."""
+
+    def test_flock_prefix_does_not_hide_the_command(self):
+        for c in ("flock ~/.config/zchat-qa/locks/parity.lock rm -rf ~/zchat-android",
+                  "flock -w 5 /tmp/l gh secret set X < k",
+                  "flock /tmp/l -c 'echo x > ~/zchat-android/a'"):
+            self.assertEqual(bash(c), "deny", c)
+
+    def test_nested_shells_and_eval_are_parsed(self):
+        for c in ("bash -c 'echo x > ~/zchat-android/a'", "sh -c \"rm -rf /home/yourt/zchat/apps\"",
+                  "eval 'git -C /home/yourt/zchat-android commit -m x'", "bash -lc 'gh secret set X < k'",
+                  "timeout 5 bash -c 'touch /home/yourt/zchat-android-wt/x'"):
+            self.assertEqual(bash(c), "deny", c)
+        self.assertEqual(bash("bash -c 'ls ~/zchat-android'"), "allow")
+
+    def test_pushd_moves_the_directory(self):
+        self.assertEqual(bash("pushd ~/zchat-android && git commit -m x"), "deny")
+        self.assertEqual(bash("pushd ~/zchat-android && echo x > a"), "deny")
+
+    def test_git_env_repo_is_seen(self):
+        self.assertEqual(bash("GIT_DIR=/home/yourt/zchat-android/.git git commit -m x"), "deny")
+        self.assertEqual(bash("GIT_WORK_TREE=/home/yourt/zchat-android git checkout -- ."), "deny")
+        self.assertEqual(bash("export GIT_DIR=/home/yourt/zchat-android/.git; git commit -m x"), "deny")
+
+    def test_target_directory_and_find_writers(self):
+        for c in ("cp -t ~/zchat-android a.swift", "mv --target-directory=/home/yourt/zchat-android a",
+                  "find ~/zchat-android -name x -delete", "find /home/yourt/zchat-android -exec rm {} +",
+                  "xargs rm < list.txt; rm ~/zchat-android/x"):
+            self.assertEqual(bash(c), "deny", c)
+        self.assertEqual(bash("find ~/zchat-android -name '*.kt' -newer x"), "allow")
+
+    def test_graphql_mutation_denied(self):
+        self.assertEqual(bash("gh api graphql -f query='mutation { updateRepository(input:{}) { clientMutationId } }'"),
+                         "deny")
+        self.assertEqual(bash("gh api graphql -f query='query { viewer { login } }'"), "allow")
+
+
 class FailClosed(unittest.TestCase):
     def test_garbage_payload_denied(self):
         r = subprocess.run([sys.executable, ENTRY], input="not json", capture_output=True, text=True, timeout=30)
