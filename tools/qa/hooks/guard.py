@@ -37,7 +37,7 @@ PARITY_ROOTS = [HOME + "/zchat-spec/parity", HOME + "/zchat-ios/parity"]
 PARITY_WT = re.compile(r"^" + re.escape(HOME) + r"/zchat-ios-wt/[^/]+/parity(/|$)")
 SIGNING = re.compile(r"(\.p8|\.p12|\.mobileprovision|\.cer|\.certSigningRequest)$|(^|[/:])AuthKey_[^/]*$|"
                      r"(^|[/:])fastlane/\.env[^/]*$|(^|[/:])\.env(\.[\w-]+)?$", re.I)
-SIGNING_DIR = re.compile(r"(^|/)fastlane/?$", re.I)
+SIGNING_DIR = re.compile(r"(^|/)fastlane(/(keys|certs|certificates|profiles|match|signing)(/|$)|/?$)", re.I)
 BAD_PACKAGES = re.compile(r"zodl|libsignal|slipstream", re.I)
 
 # Text that names a protected place in any spelling. Removed first: the lock files and heavy.py, which are allowed.
