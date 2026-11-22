@@ -1,0 +1,4 @@
+# sha256  path  source (vendored read-only; re-vendor only from a named, clean Android commit)
+4c8676ed437b36b97d650f40a8bb736421dc5d1e9486ba2082861853e63bfd89  secret_scan.py  android@4df9172c4 tools/qa/secret_scan.py
+eba9618cb97faa00d0bad85a9f4bc050d62b4c21883b45b0f82ef056f4d104b6  secret_scan.allow.txt  android@4df9172c4 tools/qa/secret_scan.allow.txt
+2f5eed53a4727b4bf8880d8f3f199efc90e58503646d9ff8eff3a2ed3b24dbda  bip39_english.txt  android@4df9172c4 tools/qa/bip39_english.txt

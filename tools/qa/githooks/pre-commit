@@ -1,0 +1,6 @@
+#!/bin/sh
+# iOS repo pre-commit (plan E, A14). Called by the owner's chain in ~/.config/zchat-denylist/hooks. Fails closed.
+D=$(cd "$(dirname "$0")" && pwd)
+[ -f "$D/pre_commit.py" ] || { echo "BLOCKED: $D/pre_commit.py is missing, so the commit checks cannot run."; exit 1; }
+command -v python3 >/dev/null 2>&1 || { echo "BLOCKED: python3 is missing, so the commit checks cannot run."; exit 1; }
+exec python3 -I "$D/pre_commit.py" "$@"
