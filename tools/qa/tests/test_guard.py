@@ -323,6 +323,14 @@ class ReviewBypasses(unittest.TestCase):
                           "sha256sum ~/zchat-android/AGENTS.md", "diff ~/zchat-android/a ~/zchat-ios/b",
                           "awk '{print $1}' ~/zchat-android/x", "wc -l ~/zchat-android/app/src/main/x.kt"])
 
+    def test_script_preamble_and_loops_allowed(self):
+        """False positives found by replaying the day's scripts (2026-11-22)."""
+        self.assertAllow(["set -euo pipefail\ngit -C ~/zchat-android log -1",
+                          "for r in ~/zchat-ios ~/zchat-spec; do git -C $r status; done",
+                          "set -e\nN=$(git -C /home/yourt/zchat-android config --get user.name)\n"
+                          "git -C /home/yourt/zchat-ios config user.name \"$N\""])
+        self.assertDeny(["for r in ~/zchat-android; do rm -rf $r/x; done"])
+
 
 class FailClosed(unittest.TestCase):
     def test_garbage_payload_denied(self):

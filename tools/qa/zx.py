@@ -57,9 +57,17 @@ def _hook(script, payload, cwd):
     if not out:
         return True, None, ""
     try:
-        return True, json.loads(out.splitlines()[-1]), ""
+        d = json.loads(out)
     except ValueError:
         return False, None, "hook %s printed non-JSON (fail-closed)" % script
+    if not isinstance(d, dict):
+        return False, None, "hook %s printed JSON that is not an object (fail-closed)" % script
+    return True, d, ""
+
+
+def _abs(path):
+    """The one path both the guard and the open() see: absolute from this process's cwd, symlinks resolved."""
+    return os.path.realpath(os.path.abspath(os.path.expanduser(path)))
 
 
 def guard(tool, tool_input, cwd):
@@ -78,11 +86,11 @@ def guard(tool, tool_input, cwd):
             return d["deny"]
         h = d.get("hookSpecificOutput") or {}
         dec = h.get("permissionDecision")
-        if dec in ("deny", "ask"):
-            return "%s (%s): %s" % (os.path.basename(os.path.dirname(os.path.dirname(os.path.dirname(
-                os.path.dirname(g))))), dec, h.get("permissionDecisionReason", ""))
-        if d.get("decision") == "block":
-            return d.get("reason", "blocked")
+        who = os.path.basename(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(g)))))
+        if dec not in (None, "allow"):
+            return "%s (%s): %s" % (who, dec, h.get("permissionDecisionReason", ""))
+        if d.get("decision") not in (None, "approve", "allow") or d.get("continue", True) is False:
+            return "%s: %s" % (who, d.get("reason") or d.get("stopReason") or "blocked (fail-closed)")
     return None
 
 
@@ -95,10 +103,14 @@ def scan(tool, tool_input, cwd, response):
         return why
     if d is None:
         return None
+    if "deny" in d:
+        return "output scan blocked (exit 2): " + str(d["deny"])[:800]
     if d.get("decision") == "block":
         return "output scan: " + str(d.get("reason", ""))[:800]
     if "systemMessage" in d:
         return "output scan skipped the output (fail-closed): " + str(d["systemMessage"])[:300]
+    if d:
+        return "output scan answered something unknown (fail-closed): " + json.dumps(d)[:200]
     return None
 
 
@@ -132,6 +144,7 @@ def do_bash(cmd, cwd, timeout):
 
 
 def do_read(path, offset, limit):
+    path = _abs(path)
     ti = {"file_path": path}
     if offset:
         ti["offset"] = offset
@@ -166,19 +179,25 @@ def _write_checked(tool, ti, path, content):
 
 
 def do_write(path, src):
+    path = _abs(path)
     content = open(src, encoding="utf-8", newline="").read().replace("\r\n", "\n")
     return _write_checked("Write", {"file_path": path, "content": content}, path, content)
 
 
 def do_edit(path, old_f, new_f, all_):
+    path = _abs(path)
     old = open(old_f, encoding="utf-8", newline="").read().replace("\r\n", "\n")
     new = open(new_f, encoding="utf-8", newline="").read().replace("\r\n", "\n")
+    ti = {"file_path": path, "old_string": old, "new_string": new, "replace_all": bool(all_)}
+    why = guard("Edit", ti, PROJECT)                         # checked before the target is opened
+    if why:
+        print("ZX DENIED: " + why)
+        return 3
     cur = open(path, encoding="utf-8", newline="").read()
     n = cur.count(old)
     if n == 0 or (n > 1 and not all_):
         print("zx: edit refused: old text found %d times in %s" % (n, path))
         return 1
-    ti = {"file_path": path, "old_string": old, "new_string": new, "replace_all": bool(all_)}
     return _write_checked("Edit", ti, path, cur.replace(old, new) if all_ else cur.replace(old, new, 1))
 
 
