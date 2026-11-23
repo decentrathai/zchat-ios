@@ -24,11 +24,12 @@ jobs:
   core:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
-    if: ${{ hashFiles('Packages/ZChatCore/Package.swift') != '' }}
     steps:
       - uses: actions/checkout@v4
       - name: Swift version
+        if: hashFiles('Packages/ZChatCore/Package.swift') != ''
         run: swift --version
       - name: ZChatCore build and tests
+        if: hashFiles('Packages/ZChatCore/Package.swift') != ''
         working-directory: Packages/ZChatCore
         run: swift test
