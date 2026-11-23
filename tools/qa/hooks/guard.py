@@ -337,7 +337,7 @@ def _wi9_gitdir_ok(g):
     if os.path.islink(cfg) or not os.path.isfile(cfg):
         return False
     text = _read(cfg)
-    return text is not None and not re.search(r"^\s*\[\s*include", text, re.I | re.M)
+    return text is not None and not re.search(r"\[\s*include", text, re.I)
 
 
 def _wi9_tree_ok(tree, ios_git=None, lane_root=None):
@@ -369,7 +369,8 @@ def _wi9_tree_ok(tree, ios_git=None, lane_root=None):
 # Files that steer git, gh or every new shell (GIT_DIR, aliases, url rewrites); the agent never writes them.
 STEER_FILES = [HOME + "/.bashrc", HOME + "/.profile", HOME + "/.bash_profile", HOME + "/.bash_login",
                HOME + "/.bash_logout", HOME + "/.zshrc", HOME + "/.zshenv", HOME + "/.gitconfig", HOME + "/.config/git",
-               HOME + "/.config/gh", HOME + "/.inputrc", HOME + "/.bash_aliases"]
+               HOME + "/.config/gh", HOME + "/.inputrc", HOME + "/.bash_aliases", HOME + "/.zprofile",
+               HOME + "/bin", HOME + "/.local/bin"]
 
 
 def steer_file(p):
@@ -392,6 +393,9 @@ def wi9_exact(cmd, cwd):
 
 def check_git(args, cwd, env):
     a = args[1:]
+    bad = sorted(k for k in env if k.startswith("GIT_CONFIG") and k != "GIT_CONFIG_NOSYSTEM")
+    if bad:
+        return "%s sets git config the guard never sees (A14, WI-9 review)" % bad[0]
     repo = env.get("GIT_DIR") or env.get("GIT_WORK_TREE")
     repo = _norm(re.sub(r"/\.git/?$", "", repo), cwd) if repo else cwd
     i, sub, rest = 0, None, []
@@ -407,6 +411,8 @@ def check_git(args, cwd, env):
                 return "git -c alias.* can rename a refused command (A14, WI-9 review)"
             if a[i + 1].lower().startswith(("include.", "includeif.")):
                 return "git -c include.* pulls in config the guard never sees (A14, WI-9 review)"
+            if a[i + 1].lower().startswith(("remote.", "url.")):
+                return "git -c remote.* / url.* redirects a fetch or push for one command (A14, WI-9 review)"
             i += 2
         elif x in ("--git-dir", "--work-tree") and i + 1 < len(a):
             repo = _norm(re.sub(r"/\.git/?$", "", a[i + 1]), repo)
