@@ -1,0 +1,34 @@
+# Plan F.1 core-linux: every push and PR on Linux (GitHub Free minutes, WI-1 B8 / WI-7: free tier only).
+# Harness tests now; ZChatCore build + tests join when Packages/ZChatCore exists (Swift ships on ubuntu-24.04 images).
+name: core-linux
+on:
+  push:
+    branches: [dev, "lane/**"]
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: core-linux-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  harness:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Harness tests
+        run: python3 -m unittest discover -s tools/qa/tests -v 2>&1 | tail -40
+        shell: bash -o pipefail {0}
+      - name: Secret scan of this push
+        run: python3 -I tools/qa/vendor/secret_scan.py --hard-only --summary --allow tools/qa/vendor/secret_scan.allow.txt files .
+  core:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    if: ${{ hashFiles('Packages/ZChatCore/Package.swift') != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Swift version
+        run: swift --version
+      - name: ZChatCore build and tests
+        working-directory: Packages/ZChatCore
+        run: swift test
