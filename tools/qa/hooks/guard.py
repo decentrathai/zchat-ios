@@ -43,7 +43,8 @@ BAD_PACKAGES = re.compile(r"zodl|libsignal|slipstream", re.I)
 # Text that names a protected place in any spelling. Removed first: the lock files and heavy.py, which are allowed.
 MENTION_OK = re.compile(r"(~|\$HOME|\$\{HOME\}|/home/yourt)/\.config/zchat-qa/locks/[\w.-]+\.lock|"
                         r"(~|\$HOME|\$\{HOME\}|/home/yourt)/zchat-android/tools/qa/heavy\.py|"
-                        r"zchat-nu7-sdk/zcash-swift-wallet-sdk")
+                        r"(~|\$HOME|\$\{HOME\}|/home/yourt)?/*zchat-nu7-sdk/zcash-swift-wallet-sdk"
+                        r"(?=/|$|[\s;&|)'\"<>])")   # the whole path, so no bare "/home/yourt/" is left behind
 _END = r"(?=$|[\s;&|)'\"<>])"
 MENTION = re.compile(r"zchat-android|zchat-worktrees|zchat-nu7-sdk|zchat-qa|zchat-denylist|zchat-?[*?\[]|"
                      r"zchat(?![\w-])|(~|/home/yourt|\$HOME|\$\{HOME\}|~yourt)/+\.config/*" + _END + "|"
