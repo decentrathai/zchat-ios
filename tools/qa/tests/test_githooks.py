@@ -167,14 +167,7 @@ class CommitMsg(HookRepo):
                 self.blocked("test(core): a", says="[test-change-ok:")
                 self.git("reset", "-q", "--hard")
 
-    def test_product_path_blocked_until_parity_check_exists(self):
-        for path in ["Packages/ZChatCore/Sources/ZChatCore/A.swift", "App/Sources/A.swift", "project.yml",
-                     "Packages/ZChatCore/Package.swift"]:
-            with self.subTest(path=path):
-                self.put(path, "x\n")
-                self.blocked("refactor(core): a\n\nParity: n/a — pure rename, no behaviour change",
-                             says="parity.py check-commit")
-                self.git("reset", "-q", "--hard")
+    # Product commits are judged by parity.py check-commit from the spec's trunk: test_githooks_parity.py.
 
     def test_docs_pass(self):
         self.put("docs/a.md", "a\n")
