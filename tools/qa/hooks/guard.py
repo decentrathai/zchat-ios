@@ -427,7 +427,12 @@ def check_gh(args):
                 return "a GitHub GraphQL mutation can change a control, a repo or billing (A14)"
             return None
         if method != "GET":
-            if GH_CONTROL.search(path) or GH_REPO_ROOT.match(path.split()[0] if path else ""):
+            first = path.split()[0] if path else ""
+            if re.match(r"^/?(user|orgs/[^/]+)/repos/?$", first) or \
+                    re.match(r"^/?repos/[^/]+/[^/]+/(forks|generate|transfer)/?$", first):
+                return "gh api %s on %s creates, forks or moves a repo: repos are made by the owner (plan C.1)" % (
+                    method, first[:80])
+            if GH_CONTROL.search(path) or GH_REPO_ROOT.match(first):
                 return "gh api %s on %s changes a GitHub control, a repo setting or billing (A14)" % (method, path[:80])
             if re.search(r"(/releases|/dispatches|/rerun|/actions/runs)", path):
                 return "gh api %s on %s publishes or starts paid CI (A14)" % (method, path[:80])
