@@ -13,6 +13,7 @@ withholds the output and prints only the reason.
 Usage (paths are WSL paths):
   zx.py bash  '<command>'            [--cwd DIR] [--timeout S]
   zx.py bashf <script-file>          [--cwd DIR] [--timeout S]   (the file's text is the command)
+       bash/bashf --env NAME   one named iOS GitHub token from ~/.claude/.secrets in that one child's environment
   zx.py read  <path> [--offset N] [--limit N]
   zx.py write <path> --from <file>                               (the full new content is checked)
   zx.py edit  <path> --old <file> --new <file> [--all]
@@ -31,6 +32,33 @@ GUARDS = [HOME + "/zchat-android/tools/qa/hooks/guard_entry.py",   # the Android
 SCAN = HOME + "/zchat-android/tools/qa/hooks/output_scan.py"
 REQUIRED = {GUARDS[0], GUARDS[1], SCAN}                             # the iOS guard exists since 800b911
 MAX_OUT = 60000
+SECRETS = HOME + "/.claude/.secrets"
+ENV_OK = {"ZCHAT_IOS_GH_TOKEN", "ZCHAT_IOS_GH_TOKEN_FULL"}   # WI-9: the iOS session's own GitHub tokens, nothing else
+
+
+def _secret(name):
+    """The value of `name` from the secrets file (NAME=v or export NAME=v, quotes stripped), or None. Never shown."""
+    try:
+        lines = open(SECRETS, encoding="utf-8").read().splitlines()
+    except OSError:
+        return None
+    for ln in lines:
+        ln = ln.strip()
+        if ln.startswith("export "):
+            ln = ln[7:].lstrip()
+        k, sep, v = ln.partition("=")
+        if sep and k.strip() == name:
+            v = v.strip()
+            if len(v) >= 2 and v[0] == v[-1] and v[0] in ("'", '"'):
+                v = v[1:-1]
+            return v or None
+    return None
+
+
+def script_text(path):
+    """A bashf file's text as one command: CRLF to LF, the final newline dropped (an editor adds it)."""
+    t = open(path, encoding="utf-8").read().replace("\r\n", "\n")
+    return t[:-1] if t.endswith("\n") else t
 
 
 def _payload(event, tool, tool_input, cwd, response=None):
@@ -125,20 +153,31 @@ def emit(tool, tool_input, cwd, response, text):
     return 0
 
 
-def do_bash(cmd, cwd, timeout):
+def do_bash(cmd, cwd, timeout, env_names=()):
     ti = {"command": cmd, "description": "zx"}
+    child, values = dict(os.environ), []
+    for n in env_names or ():
+        v = _secret(n) if n in ENV_OK else None
+        if v is None:
+            print("ZX DENIED: --env %s: only %s, and only when the secrets file holds it" % (n, sorted(ENV_OK)))
+            return 3
+        child[n] = v
+        values.append(v)
     why = guard("Bash", ti, cwd)
     if why:
         print("ZX DENIED: " + why)
         return 3
     try:
         r = subprocess.run(["bash", "-c", cmd], capture_output=True, text=True, cwd=cwd, timeout=timeout,
-                           stdin=subprocess.DEVNULL)
+                           stdin=subprocess.DEVNULL, env=child)
         out, err, rc = r.stdout, r.stderr, r.returncode
     except subprocess.TimeoutExpired as e:
         out = (e.stdout or b"").decode() if isinstance(e.stdout, bytes) else (e.stdout or "")
         err, rc = "zx: timeout after %ss" % timeout, 124
     text = out + (("\n[stderr]\n" + err) if err.strip() else "") + ("" if rc == 0 else "\n[exit %d]\n" % rc)
+    if any(v in text or v[:16] in text for v in values):
+        print("ZX WITHHELD: the output contains an --env secret value (exit %d)" % rc)
+        return 4
     w = emit("Bash", ti, cwd, {"stdout": out, "stderr": err, "interrupted": False}, text)
     return w if w else rc
 
@@ -209,6 +248,7 @@ def main(argv=None):
         p.add_argument("arg")
         p.add_argument("--cwd", default=PROJECT)
         p.add_argument("--timeout", type=int, default=110)
+        p.add_argument("--env", action="append", default=[])
     p = sp.add_parser("read")
     p.add_argument("path")
     p.add_argument("--offset", type=int)
@@ -223,9 +263,9 @@ def main(argv=None):
     p.add_argument("--all", action="store_true")
     a = ap.parse_args(argv)
     if a.op == "bash":
-        return do_bash(a.arg, a.cwd, a.timeout)
+        return do_bash(a.arg, a.cwd, a.timeout, a.env)
     if a.op == "bashf":
-        return do_bash(open(a.arg, encoding="utf-8").read().replace("\r\n", "\n"), a.cwd, a.timeout)
+        return do_bash(script_text(a.arg), a.cwd, a.timeout, a.env)
     if a.op == "read":
         return do_read(a.path, a.offset, a.limit)
     if a.op == "write":
