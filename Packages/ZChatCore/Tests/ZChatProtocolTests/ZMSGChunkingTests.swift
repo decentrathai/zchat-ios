@@ -313,8 +313,8 @@ struct ZMSGChunkUnicodeTests {
         #expect(bytes(parsed.message) == bytes(message))
     }
 
-    // NFC and NFD forms are different bytes and must stay different (no normalisation anywhere).
-    // provisional (typed from code)
+    // NFC and NFD forms are different bytes and must stay different (no normalisation anywhere): the builders
+    // interpolate the message raw (ZMSGProtocol.kt:237, :251). provisional (typed from code)
     @Test func noUnicodeNormalisation() throws {
         let nfc = try ZMSGProtocol.createV4ReplyMessage(convId: "CONV0001", senderAddress: "abc", message: "\u{E9}")
         let nfd = try ZMSGProtocol.createV4ReplyMessage(convId: "CONV0001", senderAddress: "abc", message: "e\u{301}")

@@ -100,15 +100,17 @@ struct ZMSGV4ReassemblyTests {
         #expect(reassembledOrNil([memo]) == nil)
     }
 
-    // A dropped malformed chunk leaves the set incomplete even when a valid sibling is present. provisional (typed
-    // from code)
+    // A dropped malformed chunk leaves the set incomplete even when a valid sibling is present (ZMSGProtocol.kt:1240,
+    // :1253-1261; "CONTX|" is not the CONT marker and fails the conv id rule, :1465-1478). provisional (typed from
+    // code)
     @Test func aDroppedChunkLeavesTheSetIncomplete() {
         #expect(reassembledOrNil(["ZMSG|v4c|0/2|CONV0001|\(h)|a", "ZMSG|v4c|2/2|CONT|b"]) == nil)
         #expect(reassembledOrNil(["ZMSG|v4c|1/2|CONV0001|\(h)|a", "ZMSG|v4c|2/2|CONTX|b"]) == nil)
     }
 
-    // The builder never emits "1/1", but the parser accepts it (1 <= 1 <= 1). The upper bound 1000 is a valid total;
-    // a lone "1/1000" is incomplete. provisional (typed from code)
+    // The builder never emits "1/1" (:518, :559), but the parser accepts it (bounds at ZMSGProtocol.kt:1456 are
+    // inclusive). The upper bound 1000 is a valid total; a lone "1/1000" is incomplete (:1254).
+    // provisional (typed from code)
     @Test func boundsAreInclusive() throws {
         var cache = TestAddressCache()
         let one = try reassembled(["ZMSG|v4c|1/1|CONV0001|\(h)|a"], &cache)

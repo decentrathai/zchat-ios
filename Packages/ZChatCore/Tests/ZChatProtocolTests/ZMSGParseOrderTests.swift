@@ -14,6 +14,23 @@ import Testing
 private let h = "ba7816bf8f01cfea"          // generateAddressHash("abc"), FIPS 180-2 vector
 private let hex64 = rep("a", 64)
 
+/// ZBOOT memos that ZBootMessage.parse rejects (ZBootMessage.kt:71-127).
+private let zbootRejects: [String] = [
+    "ZBOOT|v1|ABCD1234|x",                                                   // v1 rejected by parse
+    "ZBOOT|",
+    "ZBOOT|v3|ABCD1234|\(rep("A", 64))|wss://r.example|0|c2ln",              // pubkey not lowercase
+    "ZBOOT|v3|ABCD1234|\(rep("a", 63))|wss://r.example|0|c2ln",              // pubkey 63
+    "ZBOOT|v3|ABCD1234|\(hex64)|ws://r.example|0|c2ln",                      // not wss
+    "ZBOOT|v3|ABCD1234|\(hex64)|wss://\(rep("r", 75))|0|c2ln",               // relay 81 chars
+    "ZBOOT|v3|ABCD1234|\(hex64)|wss://r.example|0|",                         // empty sig
+    "ZBOOT|v3|ABCD1234|\(hex64)|wss://r.example|0|\(rep("s", 201))",         // sig 201
+    "ZBOOT|v3|ABCD1234|\(hex64)|wss://r.example|-1|c2ln",                    // negative epoch
+    "ZBOOT|v3|ABCD1234|\(hex64)|wss://r.example|x|c2ln",                     // epoch not a number
+    "ZBOOT|v3|ABCD123|\(hex64)|wss://r.example|0|c2ln",                      // conv 7
+    "ZBOOT|v3|ABCD1234|\(hex64)|wss://r.example|0",                          // 4 parts
+    "ZBOOT|v2|ABCD1234|\(hex64)|wss://r.example",                            // v2, 3 parts
+]
+
 @Suite("ZMSG parseMemo: GROUP first")
 struct ZMSGParseGroupTests {
     // ZMSGProtocol.kt:678, :795-810; ZMSGGroupProtocol.kt:98-123 (split(":", limit = 3) after the prefix);
@@ -70,21 +87,7 @@ struct ZMSGParseZBootTests {
     // ZMSGProtocol.kt:687-697 + ZBootMessage.kt:61: ANY "ZBOOT|" memo takes the ZBOOT branch (consumed, never shown
     // raw): reason nil, NOT NOT_ZMSG_FORMAT, even when ZBootMessage.parse rejects it (then convId is nil).
     // provisional (typed from code)
-    @Test(arguments: [
-        "ZBOOT|v1|ABCD1234|x",                                                       // v1 rejected by parse
-        "ZBOOT|",
-        "ZBOOT|v3|ABCD1234|" + rep("A", 64) + "|wss://r.example|0|c2ln",              // pubkey not lowercase
-        "ZBOOT|v3|ABCD1234|" + rep("a", 63) + "|wss://r.example|0|c2ln",              // pubkey 63
-        "ZBOOT|v3|ABCD1234|" + rep("a", 64) + "|ws://r.example|0|c2ln",               // not wss
-        "ZBOOT|v3|ABCD1234|" + rep("a", 64) + "|wss://" + rep("r", 75) + "|0|c2ln",   // relay 81 chars
-        "ZBOOT|v3|ABCD1234|" + rep("a", 64) + "|wss://r.example|0|",                  // empty sig
-        "ZBOOT|v3|ABCD1234|" + rep("a", 64) + "|wss://r.example|0|" + rep("s", 201),  // sig 201
-        "ZBOOT|v3|ABCD1234|" + rep("a", 64) + "|wss://r.example|-1|c2ln",             // negative epoch
-        "ZBOOT|v3|ABCD1234|" + rep("a", 64) + "|wss://r.example|x|c2ln",              // epoch not a number
-        "ZBOOT|v3|ABCD123|" + rep("a", 64) + "|wss://r.example|0|c2ln",               // conv 7
-        "ZBOOT|v3|ABCD1234|" + rep("a", 64) + "|wss://r.example|0",                   // 4 parts
-        "ZBOOT|v2|ABCD1234|" + rep("a", 64) + "|wss://r.example",                     // v2, 3 parts
-    ])
+    @Test(arguments: zbootRejects)
     func anyZBootPrefixIsConsumedEvenWhenItsBodyIsRejected(memo: String) {
         let r = parseOne(memo)
         #expect(r == ParsedMessage(
@@ -186,8 +189,8 @@ struct ZMSGParseV4Tests {
             senderAddress: nil, senderHash: nil, message: memo, isUnknownSender: true, reason: .malformedMessage))
     }
 
-    // Separator search is per code point (Kotlin indexOf over UTF-16): a combining mark right after '|' must not hide
-    // the '|' (in Swift "|\u{301}" is one Character). provisional (typed from code)
+    // Separator search is per code point (Kotlin indexOf over UTF-16, ZMSGProtocol.kt:852, :882): a combining mark
+    // right after '|' must not hide the '|' (in Swift "|\u{301}" is one Character). provisional (typed from code)
     @Test func combiningMarkAfterAHashSeparator() {
         let r = parseOne("ZMSG|v4|CONV0001|\(h)|\u{301}x")
         #expect(r.senderHash == h)
@@ -269,7 +272,7 @@ struct ZMSGParseLegacyTests {
         }
     }
 
-    // GROUP and ZBOOT never touch the cache. provisional (typed from code)
+    // GROUP and ZBOOT never touch the cache (ZMSGProtocol.kt:687-697, :795-810). provisional (typed from code)
     @Test func groupAndZBootDoNotTouchTheCache() {
         var cache = TestAddressCache()
         _ = parseCaching("ZMSG:3.0:GROUP:GM:g1:{}", &cache)

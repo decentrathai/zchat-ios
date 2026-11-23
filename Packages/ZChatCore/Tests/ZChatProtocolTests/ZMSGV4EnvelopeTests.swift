@@ -30,7 +30,8 @@ struct ZMSGV4BuilderTests {
         #expect(bytes(ack) == bytes("ZMSG|v4|CONV0001|KEXACK|ba7816bf8f01cfea|KEXACK:p:s"))
     }
 
-    // Android test ZMSGProtocolAddrTest.addr_exactWireShape (T/screen/chat/model/ZMSGProtocolAddrTest.kt:37-40).
+    // Android test ZMSGProtocolAddrTest.addr_exactWireShape (T/screen/chat/model/ZMSGProtocolAddrTest.kt:37-40)
+    // (inputs changed: old sender "abc" so the hash is the FIPS literal).
     @Test func addrLayoutIsByteExact() throws {
         let memo = try ZMSGProtocol.createV4ADDRMessage(
             convId: "ABC12345", oldSenderAddress: "abc", newAddress: "u1newaddr", signature: "c2lnbmF0dXJlYmFzZTY0")
@@ -139,7 +140,8 @@ struct ZMSGV4ControlParseTests {
             signature: "c2lnbmF0dXJlYmFzZTY0"))
     }
 
-    // Android test ZMSGProtocolAddrTest.addr_signatureContainingPipes_survivesBecauseSplitLimitIsFive (:43-50).
+    // Android test ZMSGProtocolAddrTest.addr_signatureContainingPipes_survivesBecauseSplitLimitIsFive (:43-50)
+    // (inputs changed: shorter synthetic addresses).
     @Test func addrSignatureKeepsItsPipes() throws {
         let wire = try ZMSGProtocol.createV4ADDRMessage(
             convId: "ABC12345", oldSenderAddress: "abc", newAddress: "u1new", signature: "sig|with|pipes")
@@ -148,7 +150,7 @@ struct ZMSGV4ControlParseTests {
         #expect(bytes(parsed.newAddress) == bytes("u1new"))
     }
 
-    // Android test ZMSGProtocolAddrTest.addr_fewerThanFiveParts_returnsNull (:53-58).
+    // Android test ZMSGProtocolAddrTest.addr_fewerThanFiveParts_returnsNull (:53-58) (inputs changed).
     @Test func addrWithoutSignatureIsDetectedButRejected() {
         let wire = "ZMSG|v4|ABC12345|ADDR|\(hash)|u1new"
         #expect(ZMSGProtocol.isADDRMessage(wire))
@@ -156,7 +158,7 @@ struct ZMSGV4ControlParseTests {
     }
 
     // Android tests ZMSGProtocolAddrTest.addr_nonAddrMessage_returnsNull (:61-64) and
-    // isADDRMessage_onlyForAddrMarker (:67-72).
+    // isADDRMessage_onlyForAddrMarker (:67-72) (inputs changed).
     @Test func addrRecogniserOnlyForAddrMarker() {
         #expect(ZMSGProtocol.parseADDRMessage("ZMSG|v4|ABC12345|INIT|u1new|hello") == nil)
         #expect(ZMSGProtocol.parseADDRMessage("plain text") == nil)
