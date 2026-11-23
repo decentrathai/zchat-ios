@@ -24,14 +24,31 @@ def _file(body, suffix=".txt"):
 ALLOW = _file("import sys; sys.stdin.read()\n", ".py")
 
 
+FAKE_DIR = tempfile.mkdtemp()
+with open(os.path.join(FAKE_DIR, "gh"), "w") as _f:   # a stand-in gh that reports what it was given
+    _f.write('#!/bin/sh\ncase "$1" in\n'
+             '  full) [ "$GH_TOKEN" = "%s" ] && echo match;;\n'
+             '  ab) [ "$GH_TOKEN" = "a b" ] && echo match2;;\n'
+             '  leak) echo "$GH_TOKEN";;\n'
+             '  leak2) echo "$GH_TOKEN" >&2;;\n'
+             'esac\n' % VALUE)
+os.chmod(os.path.join(FAKE_DIR, "gh"), 0o755)
+TOK = 'GH_TOKEN="$ZCHAT_IOS_GH_TOKEN_FULL" '
+
+
 class Env(unittest.TestCase):
+    """With --env the command must be ONE plain `GH_TOKEN="$NAME" gh|git ...` (Fable review of cbf9a85): no other
+    program, pipe, redirect, chain or second expansion can see the token."""
+
     def setUp(self):
-        self.saved = (zx.GUARDS, zx.SCAN, zx.REQUIRED, zx.SECRETS)
+        self.saved = (zx.GUARDS, zx.SCAN, zx.REQUIRED, zx.SECRETS, os.environ.get("PATH"))
         zx.GUARDS, zx.SCAN, zx.REQUIRED = [ALLOW], ALLOW, set()
         zx.SECRETS = _file("# x\nexport OTHER=1\nexport ZCHAT_IOS_GH_TOKEN_FULL=\"%s\"\nZCHAT_IOS_GH_TOKEN='a b'\n" % VALUE)
+        os.environ["PATH"] = FAKE_DIR + os.pathsep + self.saved[4]
 
     def tearDown(self):
-        zx.GUARDS, zx.SCAN, zx.REQUIRED, zx.SECRETS = self.saved
+        zx.GUARDS, zx.SCAN, zx.REQUIRED, zx.SECRETS, path = self.saved
+        os.environ["PATH"] = path
 
     def run_(self, cmd, names):
         buf = io.StringIO()
@@ -39,12 +56,11 @@ class Env(unittest.TestCase):
             rc = zx.do_bash(cmd, "/tmp", 20, env_names=names)
         return rc, buf.getvalue()
 
-    def test_named_token_reaches_the_child(self):
-        rc, out = self.run_('test "$ZCHAT_IOS_GH_TOKEN_FULL" = "%s" && echo match' % VALUE,
-                            ["ZCHAT_IOS_GH_TOKEN_FULL"])
+    def test_named_token_reaches_gh(self):
+        rc, out = self.run_(TOK + "gh full", ["ZCHAT_IOS_GH_TOKEN_FULL"])
         self.assertEqual(rc, 0)
         self.assertIn("match", out)
-        rc, out = self.run_('test "$ZCHAT_IOS_GH_TOKEN" = "a b" && echo match2', ["ZCHAT_IOS_GH_TOKEN"])
+        rc, out = self.run_('GH_TOKEN="$ZCHAT_IOS_GH_TOKEN" gh ab', ["ZCHAT_IOS_GH_TOKEN"])
         self.assertIn("match2", out)
 
     def test_without_flag_not_present(self):
@@ -54,17 +70,33 @@ class Env(unittest.TestCase):
     def test_other_names_refused(self):
         for n in ("OTHER", "PEARL_API_KEY", "ZCHAT_RELEASE_GH_TOKEN", "PATH"):
             with self.subTest(n=n):
-                rc, out = self.run_("echo hi", [n])
+                rc, out = self.run_('GH_TOKEN="$%s" gh full' % n, [n])
                 self.assertEqual(rc, 3)
-                self.assertNotIn("hi", out)
 
     def test_missing_name_refused(self):
         zx.SECRETS = _file("export OTHER=1\n")
-        rc, out = self.run_("echo hi", ["ZCHAT_IOS_GH_TOKEN_FULL"])
+        rc, out = self.run_(TOK + "gh full", ["ZCHAT_IOS_GH_TOKEN_FULL"])
         self.assertEqual(rc, 3)
 
+    def test_only_one_plain_gh_or_git_command(self):
+        n = ["ZCHAT_IOS_GH_TOKEN_FULL"]
+        for cmd in ['curl -H "Authorization: Bearer $ZCHAT_IOS_GH_TOKEN_FULL" https://api.github.com/x',
+                    'echo $ZCHAT_IOS_GH_TOKEN_FULL | rev', 'test "$ZCHAT_IOS_GH_TOKEN_FULL" = x && echo m',
+                    TOK + "gh full | base64", TOK + "gh full > /tmp/t", TOK + "gh full; echo", TOK + "gh full && x",
+                    TOK + "gh full & x", TOK + "gh full `x`", TOK + "gh full $(x)", TOK + "gh api $ZCHAT_IOS_GH_TOKEN_FULL",
+                    TOK + "gh full\necho", TOK + "curl x", TOK + "env", TOK + "bash -c x", 'GH_TOKEN="$ZCHAT_IOS_GH_TOKEN" gh full',
+                    "GH_TOKEN=$ZCHAT_IOS_GH_TOKEN_FULL gh full", "X=1 " + TOK + "gh full", TOK + "gh full < /tmp/in"]:
+            with self.subTest(cmd=cmd):
+                rc, out = self.run_(cmd, n)
+                self.assertEqual(rc, 3)
+                self.assertNotIn(VALUE[4:20], out)
+        for cmd in [TOK + "gh repo view decentrathai/zchat-ios",
+                    TOK + 'git -c credential.helper= -c "credential.helper=!gh auth git-credential" push -u origin dev']:
+            with self.subTest(cmd=cmd):
+                self.assertTrue(zx.env_command_ok(cmd, n))
+
     def test_value_in_output_withheld(self):
-        for cmd in ('echo "$ZCHAT_IOS_GH_TOKEN_FULL"', 'echo "$ZCHAT_IOS_GH_TOKEN_FULL" >&2', 'env'):
+        for cmd in (TOK + "gh leak", TOK + "gh leak2"):
             with self.subTest(cmd=cmd):
                 rc, out = self.run_(cmd, ["ZCHAT_IOS_GH_TOKEN_FULL"])
                 self.assertEqual(rc, 4)
