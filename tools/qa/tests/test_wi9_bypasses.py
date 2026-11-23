@@ -13,6 +13,15 @@ URL = "https://github.com/decentrathai/zchat-ios.git"
 
 
 class OtherTreesAllowed(unittest.TestCase):
+    """Command shape only; these trees need not exist yet. Their on-disk state is test_wi9_tree.py's job."""
+
+    def setUp(self):
+        self._real = guard._wi9_tree_ok
+        guard._wi9_tree_ok = lambda tree, **kw: True
+
+    def tearDown(self):
+        guard._wi9_tree_ok = self._real
+
     def test_sdk_release_and_lane_trees(self):
         for cwd, cmd in [
             ("/home/yourt/zchat-nu7-sdk/zcash-swift-wallet-sdk",
