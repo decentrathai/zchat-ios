@@ -1,19 +1,20 @@
-# Plan F.1 core-linux: every push and PR on Linux (GitHub Free minutes, WI-1 B8 / WI-7: free tier only).
-# Harness tests now; ZChatCore build + tests join when Packages/ZChatCore exists (Swift ships on ubuntu-24.04 images).
+# Plan F.1 core-linux on GitHub Free Linux minutes only (owner 23 Nov 2026: no GitHub charge; IOSP-16).
+# One job per push (GitHub bills each job rounded up to a minute), no pull_request trigger (a PR from dev would run
+# the same commit twice). The guard refuses a push while any workflow here leaves the free-tier rule (test_ci_cost).
+# ZChatCore build + tests join when Packages/ZChatCore/Package.swift exists (Swift ships on the ubuntu-24.04 image).
 name: core-linux
 on:
   push:
     branches: [dev, "lane/**"]
-  pull_request:
 permissions:
   contents: read
 concurrency:
   group: core-linux-${{ github.ref }}
   cancel-in-progress: true
 jobs:
-  harness:
+  core:
     runs-on: ubuntu-24.04
-    timeout-minutes: 12
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - name: Harness tests
@@ -21,15 +22,7 @@ jobs:
         shell: bash -o pipefail {0}
       - name: Secret scan of this push
         run: python3 -I tools/qa/vendor/secret_scan.py --hard-only --summary --allow tools/qa/vendor/secret_scan.allow.txt files .
-  core:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-      - name: Swift version
-        if: hashFiles('Packages/ZChatCore/Package.swift') != ''
-        run: swift --version
       - name: ZChatCore build and tests
         if: hashFiles('Packages/ZChatCore/Package.swift') != ''
         working-directory: Packages/ZChatCore
-        run: swift test
+        run: swift --version && swift test
