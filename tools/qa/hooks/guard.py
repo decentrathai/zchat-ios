@@ -300,6 +300,96 @@ def _substitutions(cmd):
 
 
 # ---------------------------------------------------------------- rules
+# WI-9 (owner: full GitHub access) narrowed by review (WI-10): the iOS session may create its own PRIVATE repos and
+# point its own trees at them. Allowed ONLY when the WHOLE Bash command is one of these exact shapes (fullmatch on the
+# raw text, before any parsing): no expansion, no other flag or flag position, no env prefix but GH_TOKEN="$NAME",
+# no cd/pushd/popd, no --git-dir/--work-tree/-c. Any other shape falls through to the normal rules, which refuse.
+IOS_REPO_TREES = {  # repo -> its tree (fullmatch)
+    "zchat-ios": re.compile(r"/home/yourt/(zchat-ios|zchat-ios-wt/[a-z0-9]+(-[a-z0-9]+)*)"),
+    "zchat-spec": re.compile(r"/home/yourt/zchat-spec"),
+    "zcash-swift-wallet-sdk-nu7": re.compile(r"/home/yourt/zchat-nu7-sdk/zcash-swift-wallet-sdk"),
+    "zchat-ios-release": re.compile(r"/home/yourt/zchat-ios-release"),
+}
+_IOS_NAME = r"(zchat-ios|zchat-spec|zcash-swift-wallet-sdk-nu7|zchat-ios-[a-z0-9]+(?:-[a-z0-9]+)*)"
+WI9_CREATE = re.compile(r'(?:GH_TOKEN="\$[A-Z][A-Z0-9_]*" )?gh repo create decentrathai/' + _IOS_NAME +
+                        r' --private(?: (?:--description|-d) "[A-Za-z0-9 .,:/+_-]*")?')
+WI9_REMOTE = re.compile(r"git(?: -C (/home/yourt/[a-z0-9][a-z0-9/-]*))? remote add origin "
+                        r"https://github\.com/decentrathai/([a-z0-9-]+?)(?:\.git)?")
+WI9_BAD_ENV = ("GIT_DIR", "GIT_WORK_TREE", "GIT_CONFIG", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM", "GIT_CONFIG_COUNT",
+               "GIT_CONFIG_PARAMETERS", "GH_HOST", "GH_REPO", "GH_CONFIG_DIR", "GH_ENTERPRISE_TOKEN")
+
+
+def _read(p):
+    try:
+        with open(p) as f:
+            return f.read()
+    except (OSError, UnicodeDecodeError):
+        return None
+
+
+def _wi9_gitdir_ok(g):
+    """A real (not linked) git dir that keeps its own config: no commondir, config a regular file without includes."""
+    if os.path.islink(g) or not os.path.isdir(g) or os.path.realpath(g) != g:
+        return False
+    if os.path.lexists(os.path.join(g, "commondir")):
+        return False
+    cfg = os.path.join(g, "config")
+    if os.path.islink(cfg) or not os.path.isfile(cfg):
+        return False
+    text = _read(cfg)
+    return text is not None and not re.search(r"^\s*\[\s*include", text, re.I | re.M)
+
+
+def _wi9_tree_ok(tree, ios_git=None, lane_root=None):
+    """What git will really write: `git remote add` writes <common git dir>/config. The tree must exist at its
+    canonical path, and its .git must be its own real git dir, or for a zchat-ios lane, a worktree file pointing at
+    <zchat-ios>/.git/worktrees/<x> whose commondir is ../.. (WI-9 review v2)."""
+    ios_git = ios_git or HOME + "/zchat-ios/.git"
+    lane_root = lane_root or HOME + "/zchat-ios-wt"
+    if not os.path.isdir(tree) or os.path.realpath(tree) != tree:
+        return False
+    g = os.path.join(tree, ".git")
+    if os.path.islink(g):
+        return False
+    if os.path.isdir(g):
+        return _wi9_gitdir_ok(g)
+    if not os.path.isfile(g) or os.path.dirname(tree) != lane_root:
+        return False
+    m = re.fullmatch(r"gitdir: (.+)", (_read(g) or "").strip())
+    if not m or os.path.dirname(m.group(1)) != os.path.join(ios_git, "worktrees"):
+        return False
+    wd = m.group(1)
+    if os.path.islink(wd) or not os.path.isdir(wd) or os.path.realpath(wd) != wd:
+        return False
+    if os.path.islink(os.path.join(wd, "commondir")) or (_read(os.path.join(wd, "commondir")) or "").strip() != "../..":
+        return False
+    return _wi9_gitdir_ok(ios_git)
+
+
+# Files that steer git, gh or every new shell (GIT_DIR, aliases, url rewrites); the agent never writes them.
+STEER_FILES = [HOME + "/.bashrc", HOME + "/.profile", HOME + "/.bash_profile", HOME + "/.bash_login",
+               HOME + "/.bash_logout", HOME + "/.zshrc", HOME + "/.zshenv", HOME + "/.gitconfig", HOME + "/.config/git",
+               HOME + "/.config/gh", HOME + "/.inputrc", HOME + "/.bash_aliases"]
+
+
+def steer_file(p):
+    return bool(p) and p != "?" and any(_under(p, f) for f in STEER_FILES)
+
+
+def wi9_exact(cmd, cwd):
+    """True only for the two WI-9 commands in their exact shape (see the comment above IOS_REPO_TREES). cwd must be
+    the hook payload's own cwd ("" when the payload had none)."""
+    if any(os.environ.get(k) for k in WI9_BAD_ENV):
+        return False
+    if WI9_CREATE.fullmatch(cmd):
+        return True
+    m = WI9_REMOTE.fullmatch(cmd)
+    if not m or m.group(2) not in IOS_REPO_TREES:
+        return False
+    tree = m.group(1) or cwd or ""
+    return bool(tree) and bool(IOS_REPO_TREES[m.group(2)].fullmatch(tree)) and _wi9_tree_ok(tree)
+
+
 def check_git(args, cwd, env):
     a = args[1:]
     repo = env.get("GIT_DIR") or env.get("GIT_WORK_TREE")
@@ -313,6 +403,10 @@ def check_git(args, cwd, env):
         elif x == "-c" and i + 1 < len(a):
             if a[i + 1].lower().startswith("core.hookspath"):
                 return "another core.hooksPath skips the hooks (A14)"
+            if a[i + 1].lower().startswith("alias."):
+                return "git -c alias.* can rename a refused command (A14, WI-9 review)"
+            if a[i + 1].lower().startswith(("include.", "includeif.")):
+                return "git -c include.* pulls in config the guard never sees (A14, WI-9 review)"
             i += 2
         elif x in ("--git-dir", "--work-tree") and i + 1 < len(a):
             repo = _norm(re.sub(r"/\.git/?$", "", a[i + 1]), repo)
@@ -337,8 +431,15 @@ def check_git(args, cwd, env):
         if any(re.match(r"^(remote\.[^.]+\.(push)?url|url\..*\.(push)?insteadof)$", r) for r in low) and \
                 len(_paths(rest)) > 1:
             return "remote URLs are set by the owner only (plan C.1)"
+        if any(r.startswith("alias.") for r in low) and (len(_paths(rest)) > 1 or any(
+                r.startswith("--unset") or r.startswith("--replace") or r == "--add" for r in low)):
+            return "setting a git alias can rename a refused command (A14, WI-9 review)"
+        if any(r.startswith(("include.", "includeif.")) for r in low) and (len(_paths(rest)) > 1 or any(
+                r.startswith("--unset") or r.startswith("--replace") or r == "--add" for r in low)):
+            return "a git config include pulls in config the guard never sees (A14, WI-9 review)"
     if sub == "remote" and rest[:1] and rest[0] not in ("-v", "show", "get-url"):
-        return "remotes are added and changed by the owner only (plan C.1)"
+        return "remotes are added and changed by the owner only; the one exception is the exact plain command " \
+               "`git [-C <tree>] remote add origin https://github.com/decentrathai/<its repo>.git` (plan C.1, WI-9)"
     if sub == "push":
         for r in rest:
             v = r.split("=", 1)[1] if r.startswith("--repo=") else r
@@ -390,8 +491,16 @@ def check_gh(args):
         return "gh run %s changes CI; refused until ci_verify.py exists (WI-1 B8)" % sub[1]
     if sub[:1] in (["secret"], ["variable"]) and "list" not in sub[1:2]:
         return "gh %s changes a GitHub control (A14)" % sub[0]
+    for j, w in enumerate(words[:3]):  # an option value can shift the verb ("gh --repo x repo create"): look further
+        if w == "repo" and words[j + 1:j + 2] and words[j + 1] not in ("view", "list", "clone") or \
+                w == "alias" and words[j + 1:j + 2] and words[j + 1] != "list":
+            sub = [w, words[j + 1]]
+            break
     if sub[:1] == ["repo"] and sub[1:2] and sub[1] not in ("view", "list", "clone"):
-        return "gh repo %s is refused: repos are made and changed by the owner (plan C.1, B8 open)" % sub[1]
+        return "gh repo %s is refused: repos are changed or deleted by the owner; the one exception is the exact " \
+               "plain `gh repo create decentrathai/<iOS repo> --private [-d \"text\"]` (plan C.1, WI-9)" % sub[1]
+    if sub[:1] == ["alias"] and sub[1:2] and sub[1] not in ("list",):
+        return "gh alias %s can rename a refused command (A14, WI-9 review)" % sub[1]
     if sub[:1] in (["ruleset"], ["environment"], ["org"], ["codespace"], ["extension"]) or \
             sub[:1] == ["auth"] and sub[1:2] and sub[1] not in ("status",):
         return "gh %s is refused (A14)" % sub[0]
@@ -439,9 +548,11 @@ def check_gh(args):
     return None
 
 
-def check_bash(cmd, cwd, depth=0, env=None):
+def check_bash(cmd, cwd, depth=0, env=None, cwd_known=True):
     if depth > 6:
         return "commands nested more than six levels deep are refused (fail-closed)"
+    if depth == 0 and wi9_exact(cmd, cwd if cwd_known else ""):
+        return None
     env = dict(env or {})
     body_cmd, bodies = _heredocs(cmd)
     ment, pment = mentions(body_cmd)
@@ -504,6 +615,8 @@ def check_bash(cmd, cwd, depth=0, env=None):
                 return "writing %s writes into another code base (%s); hand a patch over the mailbox" % (r, root)
             if parity_file(p) or p == "?" and pment:
                 return "parity files are written only by tools/parity.py (plan D.2)"
+            if steer_file(p):
+                return "%s steers git, gh or every new shell; the owner changes it (A14, WI-9 review)" % r
             if SIGNING.search(p):
                 return "writing signing material is refused (A14)"
         for r in ins:
@@ -632,6 +745,8 @@ def check_bash(cmd, cwd, depth=0, env=None):
                 return "%s on %s writes into another code base (%s); hand a patch over the mailbox" % (prog, t, root)
             if parity_file(p) or p == "?" and pment:
                 return "parity files are written only by tools/parity.py (plan D.2)"
+            if steer_file(p):
+                return "%s on %s: that file steers git, gh or every new shell (A14, WI-9 review)" % (prog, t)
     return None
 
 
@@ -673,6 +788,8 @@ def check_file_tool(tool, ti, cwd):
     root = foreign(p)
     if root:
         return "writing %s writes into another code base (%s); hand a patch over the mailbox (A14)" % (path, root)
+    if steer_file(p):
+        return "%s steers git, gh or every new shell; the owner changes it (A14, WI-9 review)" % path
     if parity_file(p):
         return "parity files are written only by tools/parity.py (plan D.2)"
     if SIGNING.search(p):
@@ -692,7 +809,7 @@ def decide(payload):
     ti = payload.get("tool_input") or {}
     cwd = payload.get("cwd") or os.environ.get("CLAUDE_PROJECT_DIR") or HOME
     if tool == "Bash":
-        return check_bash(str(ti.get("command", "")), cwd)
+        return check_bash(str(ti.get("command", "")), cwd, cwd_known=bool(payload.get("cwd")))
     if tool in ("Read", "Grep", "Glob", "Write", "Edit", "MultiEdit", "NotebookEdit"):
         return check_file_tool(tool, ti, cwd)
     return None
