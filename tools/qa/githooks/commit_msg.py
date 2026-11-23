@@ -2,11 +2,16 @@
 
 Stricter than Android's on purpose (Fable harness review, 22 Nov 2026): there is no [no-red:] escape, and feat( is
 held to the RED rule like fix(.
+
+A commit that stages a product, unclassified or parity/SPEC_PIN path is judged by parity.py check-commit, read from the
+spec clone's committed trunk (plan D.5, tool step P0). The clone's path is a fixed literal: no environment variable can
+point the hook at another spec. Only exit 0 with PARITY PASS lets the commit go; everything else fails closed.
 """
 import os
 import re
 import subprocess
 import sys
+import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from paths import kind  # noqa: E402
@@ -20,6 +25,13 @@ SKIP = re.compile(r"(XCTSkip|\.disabled\(|withKnownIssue|@unittest\.skip|skipTes
                   r"@available\(\*,\s*unavailable|@pytest\.mark\.skip|expectedFailure)")
 TAG = r"\[%s:\s*([^\]]*?)\s*\]"
 MIN_REASON = 15
+SPEC_DIR = "/home/yourt/zchat-spec"
+SPEC_TOOL = "refs/heads/trunk:tools/parity.py"
+JUDGED = ("product", "other", "pin")
+REPO_VARS = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+             "GIT_COMMON_DIR", "GIT_PREFIX", "GIT_NAMESPACE", "GIT_QUARANTINE_PATH", "GIT_CEILING_DIRECTORIES",
+             "GIT_DISCOVERY_ACROSS_FILESYSTEM")
+TOOL_TIMEOUT = 300
 
 
 def git(*args):
@@ -77,6 +89,51 @@ def check_red(body, ctype):
             block("[red:%s] is not a test( commit (its subject: %s)" % (sha, subject[:80]))
 
 
+def trunk_tool():
+    """The bytes of tools/parity.py on the spec clone's trunk branch; never its working tree or HEAD."""
+    if not os.path.isdir(SPEC_DIR):
+        block("no spec clone at %s, so parity.py check-commit cannot judge this commit (fails closed)" % SPEC_DIR)
+    env = {k: v for k, v in os.environ.items() if k not in REPO_VARS}
+    env.update(GIT_NO_REPLACE_OBJECTS="1", GIT_CEILING_DIRECTORIES=os.path.dirname(os.path.abspath(SPEC_DIR)))
+    try:
+        top = subprocess.run(["git", "-C", SPEC_DIR, "rev-parse", "--show-toplevel"], capture_output=True, env=env,
+                             timeout=60)
+        if top.returncode or os.path.realpath(top.stdout.decode(errors="replace").strip()) != os.path.realpath(
+                SPEC_DIR):
+            block("%s is not a git clone of the spec, so parity.py check-commit cannot judge this commit "
+                  "(fails closed)" % SPEC_DIR)
+        r = subprocess.run(["git", "-C", SPEC_DIR, "show", SPEC_TOOL], capture_output=True, env=env, timeout=60)
+    except (OSError, subprocess.SubprocessError) as e:
+        block("cannot read tools/parity.py from %s trunk: %s" % (SPEC_DIR, e))
+    if r.returncode or not r.stdout:
+        block("%s has no committed tools/parity.py on trunk (%s), so parity.py check-commit cannot judge this "
+              "commit (fails closed)" % (SPEC_DIR, r.stderr.decode(errors="replace").strip()[:200]))
+    return r.stdout
+
+
+def parity_check(msg_file):
+    """Run trunk's parity.py check-commit on this commit; return only on exit 0 with PARITY PASS."""
+    tool_bytes = trunk_tool()
+    top = git("rev-parse", "--show-toplevel")
+    if top.returncode:
+        block("git rev-parse --show-toplevel failed: %s" % top.stderr.strip()[:200])
+    with tempfile.TemporaryDirectory(prefix="ios-parity-") as d:
+        tool = os.path.join(d, "parity.py")
+        with open(tool, "wb") as fh:
+            fh.write(tool_bytes)
+        cmd = [sys.executable, "-I", tool, "--spec", SPEC_DIR, "check-commit", "--platform", "ios",
+               "--repo", top.stdout.strip(), "--msg-file", os.path.abspath(msg_file)]
+        try:
+            t = subprocess.run(cmd, capture_output=True, text=True, timeout=TOOL_TIMEOUT,
+                               env=dict(os.environ, GIT_NO_REPLACE_OBJECTS="1"))
+        except (OSError, subprocess.SubprocessError) as e:
+            block("parity.py check-commit did not run to the end: %s" % e)
+    if t.returncode == 0 and "PARITY PASS" in t.stdout:
+        return
+    out = (t.stdout + t.stderr).strip() or "(no output)"
+    block("parity.py check-commit refused this commit (exit %d, no PARITY PASS):\n%s" % (t.returncode, out))
+
+
 def weakened_tests(test_paths, deleted):
     found = ["deleted %s" % p for p in deleted if kind(p) == "test"]
     if not test_paths:
@@ -111,12 +168,8 @@ def main(argv):
         return 0
     kinds = {p: kind(p) for p in paths}
 
-    product = [p for p in paths if kinds[p] in ("product", "other")]
-    if product:
-        block("%s %s product code or not classified. A product commit is judged by parity.py check-commit from "
-              "zchat-spec trunk (plan D.5, tool step P0), which does not exist yet: nothing outside tests, harness "
-              "and docs can be committed until it does." % (", ".join(product[:5]),
-                                                           "is" if len(product) == 1 else "are"))
+    if any(kinds[p] in JUDGED for p in paths):
+        parity_check(argv[1])
     if ctype == "test":
         other = [p for p in paths if kinds[p] != "test"]
         if other:
