@@ -22,6 +22,7 @@ Exit: 0 ran, 3 denied by a guard, 4 output withheld, other = the command's own e
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 
@@ -53,6 +54,13 @@ def _secret(name):
                 v = v[1:-1]
             return v or None
     return None
+
+
+def env_command_ok(cmd, names):
+    """With --env: exactly ONE plain `GH_TOKEN="$NAME" gh|git ...` for the one named token. No pipe, redirect, chain,
+    substitution, line break, backslash or second expansion, so no other program sees the token (Fable review)."""
+    m = re.fullmatch(r'GH_TOKEN="\$([A-Z][A-Z0-9_]*)" (?:gh|git) [^\n\r;&|<>`$()\\]*', cmd)
+    return bool(m) and len(names) == 1 and m.group(1) == names[0]
 
 
 def script_text(path):
@@ -156,6 +164,10 @@ def emit(tool, tool_input, cwd, response, text):
 def do_bash(cmd, cwd, timeout, env_names=()):
     ti = {"command": cmd, "description": "zx"}
     child, values = dict(os.environ), []
+    if env_names and not env_command_ok(cmd, list(env_names)):
+        print('ZX DENIED: --env needs exactly one plain `GH_TOKEN="$NAME" gh|git ...` command (no pipe, redirect, '
+              'chain or other expansion)')
+        return 3
     for n in env_names or ():
         v = _secret(n) if n in ENV_OK else None
         if v is None:

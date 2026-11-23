@@ -81,6 +81,7 @@ GH_CONTROL = re.compile(r"(environments|secrets|variables|/keys\b|deploy[-_]keys
                         r"actions/permissions|deployments|pending_deployments|collaborators|/hooks\b|billing|"
                         r"budget|spending|visibility|/dispatches|/transfer|/invitations)", re.I)
 GH_REPO_ROOT = re.compile(r"^/?repos/[^/\s]+/[^/\s]+/?$")
+GH_API_HOST = re.compile(r"(^|[^\w.-])(api|uploads)\.github\.com", re.I)   # reached only through `gh api`
 
 
 # ---------------------------------------------------------------- paths
@@ -678,6 +679,8 @@ def check_bash(cmd, cwd, depth=0, env=None, cwd_known=True):
             if why:
                 return why
             continue
+        if prog not in READONLY and any(GH_API_HOST.search(x) for x in args[1:]):
+            return "GitHub's API is reached only through `gh api`, which the guard checks (%s; WI-9 review)" % prog
         if prog == os.path.basename(HEAVY) and _norm(args[0], here) == HEAVY:
             continue
         # The MENTION rule: a command naming a protected place runs only programs that cannot write there.
