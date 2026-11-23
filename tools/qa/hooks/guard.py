@@ -381,6 +381,113 @@ def steer_file(p):
     return bool(p) and p != "?" and any(_under(p, f) for f in STEER_FILES)
 
 
+# Free-tier CI rule (owner 23 Nov 2026: no GitHub charge, the account is GitHub Free; IOSP-16: upstream's .github in
+# the SDK fork ran 16 Dependabot PRs on macOS at 10x). A push is refused while the pushed tree holds a workflow that
+# can spend more than a short Linux run. Read line by line, no YAML library: what this reader cannot follow is refused.
+CI_RUNNER_OK = re.compile(r"ubuntu-(?:latest|\d{2}\.\d{2})")
+CI_MAX_TIMEOUT = 30
+
+
+def _ci_value(v):
+    v = re.sub(r"\s+#.*$", "", v).strip()
+    return v[1:-1] if len(v) >= 2 and v[0] == v[-1] and v[0] in "\"'" else v
+
+
+def workflow_cost_problem(name, text):
+    """None when every job of this workflow text is a short GitHub-hosted ubuntu run; else why not."""
+    rows = []
+    for raw in text.replace("\r\n", "\n").split("\n"):
+        if "\t" in raw[:len(raw) - len(raw.lstrip())]:
+            return "%s: tab indentation" % name
+        s = raw.strip()
+        if s and not s.startswith("#"):
+            rows.append((len(raw) - len(raw.lstrip(" ")), s))
+    for _, s in rows:
+        k = re.match(r"^(?:-\s+)?([\w-]+)\s*:", s)
+        if k and k.group(1) in ("schedule", "workflow_run"):
+            return "%s: a %s trigger starts runs with no push" % (name, k.group(1))
+        if k and k.group(1) == "matrix":
+            return "%s: a matrix multiplies the minutes" % name
+    top = [i for i, (ind, s) in enumerate(rows) if ind == 0 and re.match(r"^[\"']?jobs[\"']?\s*:", s)]
+    if len(top) != 1 or not re.fullmatch(r"jobs\s*:", rows[top[0]][1]):
+        return "%s: no plain block-style `jobs:` line" % name
+    body = []
+    for ind, s in rows[top[0] + 1:]:
+        if ind == 0:
+            break
+        body.append((ind, s))
+    if not body:
+        return "%s: no jobs" % name
+    jind = body[0][0]
+    jobs, cur = [], None
+    for ind, s in body:
+        if ind < jind:
+            return "%s: jobs indentation not followed" % name
+        if ind == jind:
+            if not re.fullmatch(r"[\w-]+\s*:", s):
+                return "%s: job line `%s` not followed" % (name, s[:40])
+            cur = [s.split(":")[0].strip(), []]
+            jobs.append(cur)
+        else:
+            cur[1].append((ind, s))
+    for job, lines in jobs:
+        if not lines:
+            return "%s: job %s is empty" % (name, job)
+        cind = lines[0][0]
+        keys = {}
+        for ind, s in lines:
+            m = re.match(r"^([\w-]+)\s*:(.*)$", s) if ind == cind else None
+            if m:
+                keys[m.group(1)] = _ci_value(m.group(2))
+        if "uses" in keys:
+            return "%s: job %s calls another workflow" % (name, job)
+        if not CI_RUNNER_OK.fullmatch(keys.get("runs-on", "")):
+            return "%s: job %s runs-on %r, only a GitHub-hosted ubuntu runner on one line" % (
+                name, job, keys.get("runs-on"))
+        t = keys.get("timeout-minutes", "")
+        if not re.fullmatch(r"\d{1,2}", t) or not 1 <= int(t) <= CI_MAX_TIMEOUT:
+            return "%s: job %s needs its own timeout-minutes of 1..%d (has %r)" % (name, job, CI_MAX_TIMEOUT, t or None)
+    return None
+
+
+def _git_top(p):
+    q = p
+    while q and q != "/":
+        if os.path.lexists(os.path.join(q, ".git")):
+            return q
+        q = os.path.dirname(q)
+    return p
+
+
+def tree_cost_problem(root):
+    """None when the tree at root holds no workflow or dependabot file that can cost money; else why not."""
+    gh = os.path.join(root, ".github")
+    for n in ("dependabot.yml", "dependabot.yaml"):
+        if os.path.lexists(os.path.join(gh, n)):
+            return ".github/%s opens PRs that start runs (IOSP-16)" % n
+    wd = os.path.join(gh, "workflows")
+    if not os.path.lexists(wd):
+        return None
+    if os.path.islink(wd) or not os.path.isdir(wd):
+        return ".github/workflows is not a plain folder"
+    try:
+        names = sorted(os.listdir(wd))
+    except OSError:
+        return ".github/workflows cannot be read"
+    for n in names:
+        if not n.endswith((".yml", ".yaml")):
+            continue
+        try:
+            with open(os.path.join(wd, n), encoding="utf-8") as f:
+                text = f.read()
+        except (OSError, UnicodeDecodeError):
+            return ".github/workflows/%s cannot be read" % n
+        why = workflow_cost_problem(n, text)
+        if why:
+            return why
+    return None
+
+
 def wi9_exact(cmd, cwd):
     """True only for the two WI-9 commands in their exact shape (see the comment above IOS_REPO_TREES). cwd must be
     the hook payload's own cwd ("" when the payload had none)."""
@@ -456,6 +563,9 @@ def check_git(args, cwd, env):
             if not r.startswith("-") or r.startswith("--repo="):
                 if re.search(r"(://|^git@|^[\w-]+(\.[\w-]+)+:|^/|^\.\.?/)", v) or r.startswith("--repo="):
                     return "push to a URL instead of a named remote is refused (A14: no push to a public remote)"
+        why = tree_cost_problem(_git_top(repo))
+        if why:
+            return "push refused by the free-tier CI rule (owner 23 Nov 2026, IOSP-16): " + why
     for r in rest + [a_ for a_ in a]:
         if SIGNING.search(r):
             return "signing material is never read, staged or shown through git (A14)"
