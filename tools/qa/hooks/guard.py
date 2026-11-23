@@ -313,6 +313,8 @@ IOS_REPO_TREES = {  # repo -> its tree (fullmatch)
 _IOS_NAME = r"(zchat-ios|zchat-spec|zcash-swift-wallet-sdk-nu7|zchat-ios-[a-z0-9]+(?:-[a-z0-9]+)*)"
 WI9_CREATE = re.compile(r'(?:GH_TOKEN="\$[A-Z][A-Z0-9_]*" )?gh repo create decentrathai/' + _IOS_NAME +
                         r' --private(?: (?:--description|-d) "[A-Za-z0-9 .,:/+_-]*")?')
+WI9_DEFAULT_BRANCH = re.compile(r'(?:GH_TOKEN="\$[A-Z][A-Z0-9_]*" )?gh api -X PATCH repos/decentrathai/' + _IOS_NAME +
+                                r' -f default_branch=[a-z0-9][a-z0-9_-]*(?:/[a-z0-9][a-z0-9_-]*)*')
 WI9_REMOTE = re.compile(r"git(?: -C (/home/yourt/[a-z0-9][a-z0-9/-]*))? remote add origin "
                         r"https://github\.com/decentrathai/([a-z0-9-]+?)(?:\.git)?")
 WI9_BAD_ENV = ("GIT_DIR", "GIT_WORK_TREE", "GIT_CONFIG", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM", "GIT_CONFIG_COUNT",
@@ -382,7 +384,7 @@ def wi9_exact(cmd, cwd):
     the hook payload's own cwd ("" when the payload had none)."""
     if any(os.environ.get(k) for k in WI9_BAD_ENV):
         return False
-    if WI9_CREATE.fullmatch(cmd):
+    if WI9_CREATE.fullmatch(cmd) or WI9_DEFAULT_BRANCH.fullmatch(cmd):
         return True
     m = WI9_REMOTE.fullmatch(cmd)
     if not m or m.group(2) not in IOS_REPO_TREES:
