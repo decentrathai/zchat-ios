@@ -38,6 +38,8 @@ class RepoCreate(unittest.TestCase):
 
 
 class RemoteAdd(unittest.TestCase):
+    @unittest.skipUnless(os.path.isdir(IOS + "/.git") and os.path.isdir(SPEC + "/.git"),
+                         "needs the laptop's real iOS trees (the tree check reads .git on disk)")
     def test_own_trees_to_own_repos_allowed(self):
         for cwd, cmd in [(IOS, "git remote add origin https://github.com/decentrathai/zchat-ios.git"),
                          (SPEC, "git remote add origin https://github.com/decentrathai/zchat-spec.git"),

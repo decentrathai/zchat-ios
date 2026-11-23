@@ -99,6 +99,7 @@ class ZX(unittest.TestCase):
         finally:
             os.chdir(old)
 
+    @unittest.skipUnless(os.path.isdir(zx.PROJECT), "needs the laptop's zchat-ios tree (zx runs hooks from it)")
     def test_write_checked_with_full_content(self):
         zx.GUARDS, zx.SCAN, zx.REQUIRED = [DENY], ALLOW, set()
         src = _script("content")
