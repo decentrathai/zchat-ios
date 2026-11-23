@@ -20,6 +20,12 @@ cross-family review.
 
 **WI-4 window:** until 2026-11-22 23:00 CET Fable may be used without the usual limit; after that the split above applies.
 
+**Budget without extra credits (owner, 23 Nov).** Fable is capped at half of the weekly limit and counts toward it. The
+orchestrator runs on Opus; Fable is spent where a miss costs money or rework: plan critiques, reviews of guard, money,
+crypto, privacy and format changes, and bugs still open after two tries. Fable resets are kept for the heaviest weeks
+(the SDK and wallet port, the week before an upload review) and used only when Fable is near its cap early in a week,
+never a day or two before the weekly reset. Subagents get short, scoped briefs; no many-agent workflows unless asked.
+
 ## Plan critique before work (W-103)
 Before a plan changes code or harness (a lane, a harness change, a large refactor or test campaign): the plan is written
 to `~/zchat-evidence/ios/plans/<PLAN>.md`, the `ios-plan-critic` (Fable) critiques it, the critique is saved beside it as
@@ -31,6 +37,15 @@ Every P0/P1 money, crypto, privacy, migration or format change gets Fable plus a
 Android's `venice_review.py`, on a bundle that `secret_scan.py --summary files <folder>` passes), and is written but not
 merged until the owner answers B9 (AGENTS.md rule 2). `base_sha` and `head_sha` go in the question itself; the returned
 sha is checked against them.
+
+**Second-family routes, in order (23 Nov):**
+1. Pearl DeepSeek-V4.1-Flash, `PEARL_EFFORT=low`, `PEARL_MAX` about 48000 (`~/zchat-evidence/ios/reviews/pearl_review_ios.py`):
+   about 1-2 cents a review, ledger `ops/pearl/ledger.jsonl`. V4-Pro and caps of 16k return empty content (all reasoning).
+2. GPT or Grok on the owner's subscriptions: `~/zchat-evidence/second-opinion-20261002/ask.py --backend gpt|grok`
+   (read_file-only sandbox; its memory gate needs 5 GB free Windows commit; zx stops at 110 s, so run it detached).
+3. Venice GPT through the Android session, from its budget, only when it has balance.
+**WI-10 fallback:** when no second family answers, a Fable `ios-reviewer` review counts, recorded as "same family, WI-10".
+A review is bound to exact bytes: any later change to a reviewed file makes the review stale.
 
 ## Roles and their rules
 Roles: `ios-reproducer`, `ios-red-test-author`, `ios-implementer`, `ios-reviewer`, `ios-plan-critic` (`.claude/agents/`).
