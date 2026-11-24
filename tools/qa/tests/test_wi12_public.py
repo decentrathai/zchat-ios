@@ -1,5 +1,5 @@
 """WI-12 (owner, 24 Nov 2026): ZChat iOS is open source like Android; "You have PAT from GitHub ... Do everything by
-yourself." The iOS session may make exactly its three repos public with one exact plain command each. Everything else
+yourself." The iOS session may make exactly its three repos public with one exact plain command each (the installed gh has no --accept-visibility-change-consequences flag). Everything else
 about visibility stays refused: other repos (zchat-ios-release, Android's), private, other flags, the API form."""
 import os
 import sys
@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(
 import guard  # noqa: E402
 
 IOS = "/home/yourt/zchat-ios"
-ACK = " --visibility public --accept-visibility-change-consequences"
+ACK = " --visibility public"
 
 
 class MakePublic(unittest.TestCase):
@@ -27,11 +27,11 @@ class MakePublic(unittest.TestCase):
                     "gh repo edit decentrathai/zcash-android-wallet-sdk-nu7" + ACK,
                     "gh repo edit someone/zchat-ios" + ACK,
                     "gh repo edit zchat-ios" + ACK,
-                    "gh repo edit decentrathai/zchat-ios --visibility private --accept-visibility-change-consequences",
-                    "gh repo edit decentrathai/zchat-ios --visibility internal --accept-visibility-change-consequences",
+                    "gh repo edit decentrathai/zchat-ios --visibility private",
+                    "gh repo edit decentrathai/zchat-ios --visibility internal",
                     "gh repo edit decentrathai/zchat-ios" + ACK + " --default-branch x",
                     "gh repo edit decentrathai/zchat-ios --default-branch x" + ACK,
-                    "gh repo edit --visibility public --accept-visibility-change-consequences decentrathai/zchat-ios",
+                    "gh repo edit --visibility public decentrathai/zchat-ios",
                     "gh repo edit decentrathai/zchat-ios" + ACK + "; echo",
                     "gh repo edit decentrathai/zchat-ios" + ACK + "\n",
                     "gh repo edit decentrathai/$R" + ACK,
@@ -39,13 +39,13 @@ class MakePublic(unittest.TestCase):
                     "GH_REPO=decentrathai/zchat-android gh repo edit decentrathai/zchat-ios" + ACK,
                     "gh api -X PATCH repos/decentrathai/zchat-ios -f visibility=public",
                     "gh api -X PATCH repos/decentrathai/zchat-ios -F private=false",
-                    "gh repo edit decentrathai/zchat-ios --visibility public",
+                    "gh repo edit decentrathai/zchat-ios --visibility public --accept-visibility-change-consequences",
                     "gh repo delete decentrathai/zchat-ios --yes",
                     "gh repo edit decentrathai/zchat-ios" + ACK + " ",
                     "gh repo edit decentrathai/zchat-ios" + ACK + "\t",
                     " gh repo edit decentrathai/zchat-ios" + ACK,
                     "gh repo edit -R decentrathai/zchat-ios" + ACK,
-                    "gh repo edit decentrathai/zchat-ios --visibility=public --accept-visibility-change-consequences",
+                    "gh repo edit decentrathai/zchat-ios --visibility=public",
                     "gh repo edit Decentrathai/ZChat-iOS-Release" + ACK,
                     "gh repo edit decentrathai/ZCHAT-IOS-RELEASE" + ACK,
                     "gh repo edit decentrathai/zchat-ios.git" + ACK,
