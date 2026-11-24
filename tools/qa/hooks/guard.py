@@ -321,7 +321,7 @@ WI9_DEFAULT_BRANCH = re.compile(r'(?:GH_TOKEN="\$[A-Z][A-Z0-9_]*" )?gh api -X PA
 # made public, one exact plain command each. The release repo, any other repo and any other visibility stay refused.
 WI12_PUBLIC = re.compile(r'(?:GH_TOKEN="\$[A-Z][A-Z0-9_]*" )?gh repo edit decentrathai/'
                          r'(?:zchat-ios|zchat-spec|zcash-swift-wallet-sdk-nu7)'
-                         r' --visibility public --accept-visibility-change-consequences')
+                         r' --visibility public')  # gh 2.45.0 has no --accept-visibility-change-consequences
 WI9_REMOTE = re.compile(r"git(?: -C (/home/yourt/[a-z0-9][a-z0-9/-]*))? remote add origin "
                         r"https://github\.com/decentrathai/([a-z0-9-]+?)(?:\.git)?")
 WI9_BAD_ENV = ("GIT_DIR", "GIT_WORK_TREE", "GIT_CONFIG", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM", "GIT_CONFIG_COUNT",
