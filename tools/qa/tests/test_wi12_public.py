@@ -1,6 +1,7 @@
 """WI-12 (owner, 24 Nov 2026): ZChat iOS is open source like Android; "You have PAT from GitHub ... Do everything by
-yourself." The iOS session may make exactly its three repos public with one exact plain command each (the installed gh has no --accept-visibility-change-consequences flag). Everything else
-about visibility stays refused: other repos (zchat-ios-release, Android's), private, other flags, the API form."""
+yourself." The three repos were made public on 24 Nov with the one-shot exact form (34bc6c6). It is done, so the
+form is gone again (Fable review: a standing allowance could re-publish a repo the owner later makes private).
+Every visibility change, including the old exact form, is refused."""
 import os
 import sys
 import unittest
@@ -13,12 +14,12 @@ ACK = " --visibility public"
 
 
 class MakePublic(unittest.TestCase):
-    def test_allowed(self):
+    def test_one_shot_form_is_gone(self):
         for repo in ("zchat-ios", "zchat-spec", "zcash-swift-wallet-sdk-nu7"):
             for cmd in ['GH_TOKEN="$ZCHAT_IOS_GH_TOKEN_FULL" gh repo edit decentrathai/' + repo + ACK,
                         "gh repo edit decentrathai/" + repo + ACK]:
                 with self.subTest(cmd=cmd):
-                    self.assertIsNone(guard.check_bash(cmd, IOS))
+                    self.assertIsNotNone(guard.check_bash(cmd, IOS))
 
     def test_refused(self):
         for cmd in ["gh repo edit decentrathai/zchat-ios-release" + ACK,
