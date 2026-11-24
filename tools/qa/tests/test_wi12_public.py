@@ -40,9 +40,33 @@ class MakePublic(unittest.TestCase):
                     "gh api -X PATCH repos/decentrathai/zchat-ios -f visibility=public",
                     "gh api -X PATCH repos/decentrathai/zchat-ios -F private=false",
                     "gh repo edit decentrathai/zchat-ios --visibility public",
-                    "gh repo delete decentrathai/zchat-ios --yes"]:
+                    "gh repo delete decentrathai/zchat-ios --yes",
+                    "gh repo edit decentrathai/zchat-ios" + ACK + " ",
+                    "gh repo edit decentrathai/zchat-ios" + ACK + "\t",
+                    " gh repo edit decentrathai/zchat-ios" + ACK,
+                    "gh repo edit -R decentrathai/zchat-ios" + ACK,
+                    "gh repo edit decentrathai/zchat-ios --visibility=public --accept-visibility-change-consequences",
+                    "gh repo edit Decentrathai/ZChat-iOS-Release" + ACK,
+                    "gh repo edit decentrathai/ZCHAT-IOS-RELEASE" + ACK,
+                    "gh repo edit decentrathai/zchat-ios.git" + ACK,
+                    "gh repo edit https://github.com/decentrathai/zchat-android" + ACK,
+                    "bash -c 'gh repo edit decentrathai/zchat-ios" + ACK + "'",
+                    "XDG_CONFIG_HOME=/tmp/x gh repo edit decentrathai/zchat-ios" + ACK]:
             with self.subTest(cmd=cmd):
                 self.assertIsNotNone(guard.check_bash(cmd, IOS))
+
+    def test_ambient_bad_env_refuses_the_exact_form(self):
+        for k in ("GH_HOST", "GH_REPO", "GH_CONFIG_DIR", "XDG_CONFIG_HOME", "GIT_DIR"):
+            with self.subTest(env=k):
+                old = os.environ.get(k)
+                os.environ[k] = "/tmp/elsewhere"
+                try:
+                    self.assertIsNotNone(guard.check_bash("gh repo edit decentrathai/zchat-ios" + ACK, IOS))
+                finally:
+                    if old is None:
+                        del os.environ[k]
+                    else:
+                        os.environ[k] = old
 
 
 if __name__ == "__main__":
