@@ -4,7 +4,7 @@
 The Android guard's general rules (force-push, main/master, secrets file, PINs, seeds, `.git` writes, `git remote add`,
 hand-written pass files) are not repeated here. This file adds what only the iOS session needs:
   1. no write into another code base or its settings (Android, its worktrees, backend, QA config, denylist hooks)
-  2. no publishing outside the pipeline, no repo made public, no push to a URL, no hook bypass
+  2. no publishing outside the pipeline, no repo made public (one exception: WI-12), no push to a URL, no hook bypass
   3. no GitHub control change (secrets, variables, environments, keys, branch rules, permissions, deployments) or billing
   4. no read or write of Apple signing material
   5. no direct edit of the parity files (only tools/parity.py writes them)
@@ -325,7 +325,7 @@ WI12_PUBLIC = re.compile(r'(?:GH_TOKEN="\$[A-Z][A-Z0-9_]*" )?gh repo edit decent
 WI9_REMOTE = re.compile(r"git(?: -C (/home/yourt/[a-z0-9][a-z0-9/-]*))? remote add origin "
                         r"https://github\.com/decentrathai/([a-z0-9-]+?)(?:\.git)?")
 WI9_BAD_ENV = ("GIT_DIR", "GIT_WORK_TREE", "GIT_CONFIG", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM", "GIT_CONFIG_COUNT",
-               "GIT_CONFIG_PARAMETERS", "GH_HOST", "GH_REPO", "GH_CONFIG_DIR", "GH_ENTERPRISE_TOKEN")
+               "GIT_CONFIG_PARAMETERS", "GH_HOST", "GH_REPO", "GH_CONFIG_DIR", "GH_ENTERPRISE_TOKEN", "XDG_CONFIG_HOME")
 
 
 def _read(p):
@@ -494,7 +494,7 @@ def tree_cost_problem(root):
 
 
 def wi9_exact(cmd, cwd):
-    """True only for the two WI-9 commands in their exact shape (see the comment above IOS_REPO_TREES). cwd must be
+    """True only for the WI-9 and WI-12 commands in their exact shape (see the comment above IOS_REPO_TREES). cwd must be
     the hook payload's own cwd ("" when the payload had none)."""
     if any(os.environ.get(k) for k in WI9_BAD_ENV):
         return False
