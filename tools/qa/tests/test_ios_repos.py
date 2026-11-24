@@ -31,7 +31,7 @@ class RepoCreate(unittest.TestCase):
                     'gh repo create someone-else/zchat-ios-x --private',
                     'gh repo create zchat-ios-x --private',
                     'gh repo delete decentrathai/zchat-ios-x --yes',
-                    'gh repo edit decentrathai/zchat-ios --visibility public',
+                    'gh repo edit decentrathai/zchat-ios-release --visibility public',
                     'gh repo rename x']:
             with self.subTest(cmd=cmd):
                 self.assertIsNotNone(guard.check_bash(cmd, IOS))
