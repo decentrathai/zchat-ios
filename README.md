@@ -10,7 +10,7 @@ against the Android app's behaviour.
 
 ## Layout
 
-- `Packages/ZChatCore` — the Swift package with the core logic and its tests (builds on macOS and Linux)
+- `Packages/ZChatCore` — the Swift package for the core logic and its tests (in progress; meant to build on macOS and Linux)
 - `parity/` — the pin to the shared parity registry
 - `tools/qa`, `.claude`, `AGENTS.md` — the development harness (tests, commit hooks, agent rules)
 
