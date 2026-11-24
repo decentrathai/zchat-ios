@@ -387,6 +387,11 @@ def steer_file(p):
 # the SDK fork ran 16 Dependabot PRs on macOS at 10x). A push is refused while the pushed tree holds a workflow that
 # can spend more than a short Linux run. Read line by line, no YAML library: what this reader cannot follow is refused.
 CI_RUNNER_OK = re.compile(r"ubuntu-(?:latest|\d{2}\.\d{2})")
+# Public repos get standard GitHub-hosted runners at no charge, macOS included: a standard macOS runner is allowed
+# only in a tree whose one origin URL is a public iOS repo (WI-12). Larger runners (-large, -xlarge) bill always.
+CI_MAC_OK = re.compile(r"macos-(?:latest|\d{2})")
+CI_PUBLIC_ORIGIN = re.compile(r"https://github\.com/decentrathai/(?:zchat-ios|zchat-spec|zcash-swift-wallet-sdk-nu7)"
+                              r"(?:\.git)?")
 CI_MAX_TIMEOUT = 30
 
 
@@ -395,8 +400,9 @@ def _ci_value(v):
     return v[1:-1] if len(v) >= 2 and v[0] == v[-1] and v[0] in "\"'" else v
 
 
-def workflow_cost_problem(name, text):
-    """None when every job of this workflow text is a short GitHub-hosted ubuntu run; else why not."""
+def workflow_cost_problem(name, text, mac_ok=False):
+    """None when every job of this workflow text is a short GitHub-hosted ubuntu run (or, with mac_ok, a standard
+    macOS run); else why not."""
     rows = []
     for raw in text.replace("\r\n", "\n").split("\n"):
         if "\t" in raw[:len(raw) - len(raw.lstrip())]:
@@ -443,9 +449,10 @@ def workflow_cost_problem(name, text):
                 keys[m.group(1)] = _ci_value(m.group(2))
         if "uses" in keys:
             return "%s: job %s calls another workflow" % (name, job)
-        if not CI_RUNNER_OK.fullmatch(keys.get("runs-on", "")):
-            return "%s: job %s runs-on %r, only a GitHub-hosted ubuntu runner on one line" % (
-                name, job, keys.get("runs-on"))
+        r = keys.get("runs-on", "")
+        if not (CI_RUNNER_OK.fullmatch(r) or mac_ok and CI_MAC_OK.fullmatch(r)):
+            return ("%s: job %s runs-on %r, only a GitHub-hosted ubuntu runner on one line (standard macOS only in a "
+                    "public iOS repo)" % (name, job, keys.get("runs-on")))
         t = keys.get("timeout-minutes", "")
         if not re.fullmatch(r"\d{1,2}", t) or not 1 <= int(t) <= CI_MAX_TIMEOUT:
             return "%s: job %s needs its own timeout-minutes of 1..%d (has %r)" % (name, job, CI_MAX_TIMEOUT, t or None)
@@ -461,6 +468,36 @@ def _git_top(p):
     return p
 
 
+def _public_origin(root):
+    """True only when root/.git is a plain folder whose config has exactly one origin url, a public iOS repo, and no
+    pushurl, url rewrite or include that could send the push elsewhere. Anything else is False (strict)."""
+    cfg = os.path.join(root, ".git", "config")
+    if os.path.islink(os.path.join(root, ".git")) or not os.path.isdir(os.path.join(root, ".git")):
+        return False
+    try:
+        with open(cfg, encoding="utf-8") as f:
+            lines = f.read().splitlines()
+    except (OSError, UnicodeDecodeError):
+        return False
+    sec, urls = "", []
+    for raw in lines:
+        s = raw.strip()
+        if not s or s[0] in "#;":
+            continue
+        if s.startswith("["):
+            sec = s.lower()
+            if sec.startswith(("[url", "[include", "[includeif")):
+                return False
+            continue
+        k, _, v = s.partition("=")
+        k, v = k.strip().lower(), v.strip()
+        if k == "pushurl":
+            return False
+        if sec == '[remote "origin"]' and k == "url":
+            urls.append(v)
+    return len(urls) == 1 and bool(CI_PUBLIC_ORIGIN.fullmatch(urls[0]))
+
+
 def tree_cost_problem(root):
     """None when the tree at root holds no workflow or dependabot file that can cost money; else why not."""
     gh = os.path.join(root, ".github")
@@ -470,6 +507,7 @@ def tree_cost_problem(root):
     wd = os.path.join(gh, "workflows")
     if not os.path.lexists(wd):
         return None
+    mac_ok = _public_origin(root)
     if os.path.islink(wd) or not os.path.isdir(wd):
         return ".github/workflows is not a plain folder"
     try:
@@ -484,7 +522,7 @@ def tree_cost_problem(root):
                 text = f.read()
         except (OSError, UnicodeDecodeError):
             return ".github/workflows/%s cannot be read" % n
-        why = workflow_cost_problem(n, text)
+        why = workflow_cost_problem(n, text, mac_ok=mac_ok)
         if why:
             return why
     return None
