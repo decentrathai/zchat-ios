@@ -57,11 +57,15 @@ class MakePublic(unittest.TestCase):
                 self.assertIsNotNone(guard.check_bash(cmd, IOS))
 
     def test_ambient_bad_env_refuses_the_exact_form(self):
+        # A still-live WI-9 exact form, so the env list itself is what is tested (DeepSeek review of e6e371b).
+        live = "gh api -X PATCH repos/decentrathai/zchat-spec -f default_branch=trunk"
+        self.assertIsNone(guard.check_bash(live, IOS))
         for k in ("GH_HOST", "GH_REPO", "GH_CONFIG_DIR", "XDG_CONFIG_HOME", "GIT_DIR"):
             with self.subTest(env=k):
                 old = os.environ.get(k)
                 os.environ[k] = "/tmp/elsewhere"
                 try:
+                    self.assertIsNotNone(guard.check_bash(live, IOS))
                     self.assertIsNotNone(guard.check_bash("gh repo edit decentrathai/zchat-ios" + ACK, IOS))
                 finally:
                     if old is None:
