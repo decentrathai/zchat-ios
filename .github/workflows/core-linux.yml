@@ -18,7 +18,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Harness tests
-        run: python3 -m unittest discover -s tools/qa/tests -v 2>&1 | tail -40
+        # The runner sets XDG_CONFIG_HOME; the guard rightly refuses its exact gh/git forms under it (77a2ea8).
+        run: env -u XDG_CONFIG_HOME python3 -m unittest discover -s tools/qa/tests -v 2>&1 | tail -40
         shell: bash -o pipefail {0}
       - name: Secret scan of this push
         run: python3 -I tools/qa/vendor/secret_scan.py --hard-only --summary --allow tools/qa/vendor/secret_scan.allow.txt files .
