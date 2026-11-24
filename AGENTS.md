@@ -78,7 +78,9 @@ Android 2.13.1 has published, that release has the laptop, the phones, PC2 and f
     counted 10x) are shared with Android. Workflows run on ubuntu only, one job where possible, each with timeout-minutes of
     at most 30; no schedule, matrix, reusable workflow or dependabot file (the guard refuses the push, `test_ci_cost.py`). No
     upstream `.github` is pushed. When the month's minutes run out, runs stop: wait for the 1st or build under rule 12; never
-    add a payment method, a budget or a spending limit, and never make a repo public to get free minutes.
+    add a payment method, a budget or a spending limit. Since 24 Nov (WI-12) zchat-ios, zchat-spec and the SDK fork are
+    public (open source like Android), so their runs use no private minutes; zchat-ios-release stays private. Public means
+    every commit is published at once: secret_scan is the floor, and nothing private (evidence, owner notes) goes in a repo.
 13. **Guard.** Yours is added beside the Android guard, never instead of it. If it blocks useful work, the main session fixes the
     rule with a test and a subagent stops and reports; never route around it. Not made narrower without the owner's go and a second-
     family review: rules on writes into another code base, publishing and GitHub controls, secrets and signing, spends and billing,

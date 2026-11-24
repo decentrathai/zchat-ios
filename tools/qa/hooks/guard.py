@@ -4,7 +4,7 @@
 The Android guard's general rules (force-push, main/master, secrets file, PINs, seeds, `.git` writes, `git remote add`,
 hand-written pass files) are not repeated here. This file adds what only the iOS session needs:
   1. no write into another code base or its settings (Android, its worktrees, backend, QA config, denylist hooks)
-  2. no publishing outside the pipeline, no repo made public (one exception: WI-12), no push to a URL, no hook bypass
+  2. no publishing outside the pipeline, no repo made public (WI-12 was one-shot, removed), no push to a URL, no hook bypass
   3. no GitHub control change (secrets, variables, environments, keys, branch rules, permissions, deployments) or billing
   4. no read or write of Apple signing material
   5. no direct edit of the parity files (only tools/parity.py writes them)
@@ -317,11 +317,8 @@ WI9_CREATE = re.compile(r'(?:GH_TOKEN="\$[A-Z][A-Z0-9_]*" )?gh repo create decen
                         r' --private(?: (?:--description|-d) "[A-Za-z0-9 .,:/+_-]*")?')
 WI9_DEFAULT_BRANCH = re.compile(r'(?:GH_TOKEN="\$[A-Z][A-Z0-9_]*" )?gh api -X PATCH repos/decentrathai/' + _IOS_NAME +
                                 r' -f default_branch=[a-z0-9][a-z0-9_-]*(?:/[a-z0-9][a-z0-9_-]*)*')
-# WI-12 (owner 24 Nov 2026: open source like Android, "Do everything by yourself"): exactly these three repos may be
-# made public, one exact plain command each. The release repo, any other repo and any other visibility stay refused.
-WI12_PUBLIC = re.compile(r'(?:GH_TOKEN="\$[A-Z][A-Z0-9_]*" )?gh repo edit decentrathai/'
-                         r'(?:zchat-ios|zchat-spec|zcash-swift-wallet-sdk-nu7)'
-                         r' --visibility public')  # gh 2.45.0 has no --accept-visibility-change-consequences
+# WI-12 (owner 24 Nov 2026) was a one-shot exact form: zchat-ios, zchat-spec and zcash-swift-wallet-sdk-nu7 went
+# public on 24 Nov with it (34bc6c6) and it was removed after use. Every visibility change is refused again.
 WI9_REMOTE = re.compile(r"git(?: -C (/home/yourt/[a-z0-9][a-z0-9/-]*))? remote add origin "
                         r"https://github\.com/decentrathai/([a-z0-9-]+?)(?:\.git)?")
 WI9_BAD_ENV = ("GIT_DIR", "GIT_WORK_TREE", "GIT_CONFIG", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM", "GIT_CONFIG_COUNT",
@@ -494,11 +491,11 @@ def tree_cost_problem(root):
 
 
 def wi9_exact(cmd, cwd):
-    """True only for the WI-9 and WI-12 commands in their exact shape (see the comment above IOS_REPO_TREES). cwd must be
+    """True only for the WI-9 commands in their exact shape (see the comment above IOS_REPO_TREES). cwd must be
     the hook payload's own cwd ("" when the payload had none)."""
     if any(os.environ.get(k) for k in WI9_BAD_ENV):
         return False
-    if WI9_CREATE.fullmatch(cmd) or WI9_DEFAULT_BRANCH.fullmatch(cmd) or WI12_PUBLIC.fullmatch(cmd):
+    if WI9_CREATE.fullmatch(cmd) or WI9_DEFAULT_BRANCH.fullmatch(cmd):
         return True
     m = WI9_REMOTE.fullmatch(cmd)
     if not m or m.group(2) not in IOS_REPO_TREES:
